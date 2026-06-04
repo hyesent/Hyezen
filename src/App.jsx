@@ -36,6 +36,7 @@ export default function App() {
   useEffect(() => {
     fetchVoices(activeTab);
     setChat([{type: 'bot', text: `Welcome to ${themes[activeTab].name} 👋 Tap a voice card below to preview`}]);
+    setVoiceId(''); // FIX: Reset clone when switching tabs
   }, [activeTab]);
 
   useEffect(() => {
@@ -99,6 +100,7 @@ export default function App() {
     if(!text.trim()) return;
     setChat(prev => [...prev, {type: 'user', text}]);
     setLoading(true);
+    const currentText = text;
     setText('');
 
     try {
@@ -111,7 +113,7 @@ export default function App() {
         const res = await fetch(`${API_URL}/api/elevenlabs/tts`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text, voice_id: voiceId})
+          body: JSON.stringify({text: currentText, voice_id: voiceId})
         });
         const data = await res.json();
         if(data.success) {
@@ -123,11 +125,11 @@ export default function App() {
         const res = await fetch(`${API_URL}/api/tts`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text, voice, type: activeTab})
+          body: JSON.stringify({text: currentText, voice, type: activeTab})
         });
         const data = await res.json();
         if(data.robotic) {
-          const utterance = new SpeechSynthesisUtterance(text);
+          const utterance = new SpeechSynthesisUtterance(currentText);
           const selectedVoice = getRoboticVoice(voice);
           if (selectedVoice) utterance.voice = selectedVoice;
           utterance.rate = 1.1;
@@ -146,7 +148,8 @@ export default function App() {
     setLoading(false);
   }
 
-  async function startRecording() {
+  async function startRecording(e) {
+    e.preventDefault(); // FIX 1: Stops phone "speak" popup
     try {
       const stream = await navigator.mediaDevices.getUserMedia({audio: true});
       mediaRecorder.current = new MediaRecorder(stream);
@@ -155,6 +158,7 @@ export default function App() {
         if(e.data.size > 0) chunks.current.push(e.data);
       };
       mediaRecorder.current.onstop = async () => {
+        setRecording(false); // FIX 2: Force button to release
         const blob = new Blob(chunks.current, {type: 'audio/webm'});
         const base64 = await blobToBase64(blob);
         setChat(prev => [...prev, {type: 'user', text: '🎤 Voice sample recorded'}]);
@@ -169,8 +173,8 @@ export default function App() {
           const data = await res.json();
           setLoading(false);
           if(data.success) {
-            setVoiceId(data.voice_id);
-            setChat(prev => [...prev, {type: 'bot', text: '✓ Voice cloned successfully! Now type text below to generate'}]);
+            setVoiceId(data.voice_id); // FIX 3: This shows text input
+            setChat(prev => [...prev, {type: 'bot', text: '✓ Voice cloned! Now type text below to speak in your voice'}]);
           } else {
             setChat(prev => [...prev, {type: 'bot', text: 'Clone failed: ' + data.error}]);
           }
@@ -182,12 +186,22 @@ export default function App() {
       };
       mediaRecorder.current.start();
       setRecording(true);
+
+      // FIX 4: Auto-stop after 10s so mic never traps you
+      setTimeout(() => {
+        if (mediaRecorder.current && mediaRecorder.current.state === 'recording') {
+          stopRecording();
+        }
+      }, 10000);
+
     } catch (err) {
       alert('Mic permission denied! Click 🔒 in address bar → Site settings → Microphone → Allow → Refresh');
+      setRecording(false);
     }
   }
 
-  function stopRecording() {
+  function stopRecording(e) {
+    if (e) e.preventDefault();
     if (mediaRecorder.current && mediaRecorder.current.state!== 'inactive') {
       mediaRecorder.current.stop();
     }
@@ -267,6 +281,7 @@ export default function App() {
             onMouseUp={stopRecording}
             onTouchStart={startRecording}
             onTouchEnd={stopRecording}
+            onTouchCancel={stopRecording}
             style={{
               width: '100%',
               padding: '20px',
@@ -281,17 +296,23 @@ export default function App() {
               transition: 'all 0.15s',
               transform: recording? 'scale(0.95)' : 'scale(1)',
               userSelect: 'none',
-              WebkitUserSelect: 'none'
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
             }}>
-            {recording? '🔴 Recording... Release to stop' : '🎤 Hold to Record 30s'}
+            {recording? '🔴 Recording... Release to stop' : '🎤 Hold to Record 10s'}
           </button>
         ) : (
-          <div style={{display: 'flex', gap: '10px'}}>
-            <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key==='Enter' && sendText()}
-              placeholder="Type text to generate voice..."
-              style={{flex: 1, padding: '16px 18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', color: '#fff', fontSize: '15px', outline: 'none', backdropFilter: 'blur(10px)'}} />
-            <button onClick={sendText}
-              style={{padding: '16px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '14px', color: '#fff', fontSize: '18px', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102,126,234,0.4)', fontWeight: '700'}}>➤</button>
+          <div style={{display: 'flex', gap: '10px', flexDirection: 'column'}}>
+            {activeTab === 'elevenlabs' && voiceId && (
+              <div style={{fontSize: '11px', color: '#0f0', paddingLeft: '4px'}}>✓ Voice Ready - Type below to speak</div>
+            )}
+            <div style={{display: 'flex', gap: '10px'}}>
+              <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key==='Enter' && sendText()}
+                placeholder={activeTab === 'elevenlabs' && voiceId? "Type text to speak in YOUR voice..." : "Type text to generate voice..."}
+                style={{flex: 1, padding: '16px 18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', color: '#fff', fontSize: '15px', outline: 'none', backdropFilter: 'blur(10px)'}} />
+              <button onClick={sendText}
+                style={{padding: '16px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '14px', color: '#fff', fontSize: '18px', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102,126,234,0.4)', fontWeight: '700'}}>➤</button>
+            </div>
           </div>
         )}
       </div>
