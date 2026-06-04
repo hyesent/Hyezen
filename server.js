@@ -117,7 +117,7 @@ app.post('/api/elevenlabs/clone', async (req, res) => {
       body: form
     });
 
-    const data = await res.json();
+    const data = await response.json();
     res.json({success: true, voice_id: data.voice_id});
   } catch (e) {
     res.status(500).json({error: e.message});
