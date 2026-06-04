@@ -1,18 +1,22 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const { exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const fetch = require('node-fetch');
-const FormData = require('form-data');
-const { v4: uuidv4 } = require('uuid');
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import { exec } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fetch from 'node-fetch';
+import FormData from 'form-data';
+import { v4 as uuidv4 } from 'uuid';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 app.use(cors());
-app.use(express.json({limit: '50mb'}));
+app.use(express.json({ limit: '50mb' }));
 app.use('/audio', express.static(path.join(__dirname, 'audio')));
 
 if (!fs.existsSync('./audio')) fs.mkdirSync('./audio');
