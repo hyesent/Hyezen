@@ -35,54 +35,92 @@ const REALISTIC_VOICES = [
   {name: 'en-US-ChristopherNeural', label: 'Christopher US'}
 ];
 
-// FAIR: 30+ Microsoft voices - INCREASED BACK
+// FAIR: 70 GLOBAL ACCENTS - ALL CONTINENTS
 const FAIR_VOICES = [
-  // US - 10 voices
+  // === NORTH AMERICA - 16 voices ===
   {name: 'en-US-JennyNeural', label: 'Jenny US'},
   {name: 'en-US-AriaNeural', label: 'Aria US'},
   {name: 'en-US-MichelleNeural', label: 'Michelle US'},
   {name: 'en-US-SaraNeural', label: 'Sara US'},
   {name: 'en-US-AshleyNeural', label: 'Ashley US'},
+  {name: 'en-US-AnaNeural', label: 'Ana US'},
   {name: 'en-US-GuyNeural', label: 'Guy US'},
   {name: 'en-US-BrandonNeural', label: 'Brandon US'},
   {name: 'en-US-ChristopherNeural', label: 'Christopher US'},
   {name: 'en-US-EricNeural', label: 'Eric US'},
   {name: 'en-US-SteffanNeural', label: 'Steffan US'},
+  {name: 'en-US-RogerNeural', label: 'Roger US'},
+  {name: 'en-CA-ClaraNeural', label: 'Clara CA'},
+  {name: 'en-CA-LiamNeural', label: 'Liam CA'},
+  {name: 'en-CA-EmmaNeural', label: 'Emma CA'},
+  {name: 'en-CA-BrentNeural', label: 'Brent CA'},
 
-  // UK - 6 voices
+  // === EUROPE - 20 voices ===
   {name: 'en-GB-SoniaNeural', label: 'Sonia UK'},
   {name: 'en-GB-RyanNeural', label: 'Ryan UK'},
   {name: 'en-GB-LibbyNeural', label: 'Libby UK'},
   {name: 'en-GB-MaisieNeural', label: 'Maisie UK'},
   {name: 'en-GB-AbbiNeural', label: 'Abbi UK'},
   {name: 'en-GB-AlfieNeural', label: 'Alfie UK'},
+  {name: 'en-GB-ElliotNeural', label: 'Elliot UK'},
+  {name: 'en-GB-EthanNeural', label: 'Ethan UK'},
+  {name: 'en-IE-EmilyNeural', label: 'Emily IE'},
+  {name: 'en-IE-ConorNeural', label: 'Conor IE'},
+  {name: 'fr-FR-DeniseNeural', label: 'Denise FR'},
+  {name: 'fr-FR-HenriNeural', label: 'Henri FR'},
+  {name: 'de-DE-KatjaNeural', label: 'Katja DE'},
+  {name: 'de-DE-ConradNeural', label: 'Conrad DE'},
+  {name: 'es-ES-ElviraNeural', label: 'Elvira ES'},
+  {name: 'es-ES-AlvaroNeural', label: 'Alvaro ES'},
+  {name: 'it-IT-ElsaNeural', label: 'Elsa IT'},
+  {name: 'it-IT-DiegoNeural', label: 'Diego IT'},
+  {name: 'pt-PT-RaquelNeural', label: 'Raquel PT'},
+  {name: 'ru-RU-SvetlanaNeural', label: 'Svetlana RU'},
 
-  // Australia - 4 voices
-  {name: 'en-AU-NatashaNeural', label: 'Natasha AU'},
-  {name: 'en-AU-WilliamNeural', label: 'William AU'},
-  {name: 'en-AU-AnnetteNeural', label: 'Annette AU'},
-  {name: 'en-AU-KenNeural', label: 'Ken AU'},
-
-  // Canada - 4 voices
-  {name: 'en-CA-ClaraNeural', label: 'Clara CA'},
-  {name: 'en-CA-LiamNeural', label: 'Liam CA'},
-  {name: 'en-CA-EmmaNeural', label: 'Emma CA'},
-  {name: 'en-CA-BrentNeural', label: 'Brent CA'},
-
-  // India - 4 voices
+  // === ASIA - 16 voices ===
   {name: 'en-IN-NeerjaNeural', label: 'Neerja IN'},
   {name: 'en-IN-PrabhatNeural', label: 'Prabhat IN'},
   {name: 'en-IN-AnanyaNeural', label: 'Ananya IN'},
   {name: 'en-IN-ManishNeural', label: 'Manish IN'},
+  {name: 'en-SG-LunaNeural', label: 'Luna SG'},
+  {name: 'en-SG-WayneNeural', label: 'Wayne SG'},
+  {name: 'en-PH-RosaNeural', label: 'Rosa PH'},
+  {name: 'en-PH-JamesNeural', label: 'James PH'},
+  {name: 'en-HK-SamNeural', label: 'Sam HK'},
+  {name: 'en-HK-YanNeural', label: 'Yan HK'},
+  {name: 'zh-CN-XiaoxiaoNeural', label: 'Xiaoxiao CN'},
+  {name: 'zh-CN-YunxiNeural', label: 'Yunxi CN'},
+  {name: 'ja-JP-NanamiNeural', label: 'Nanami JP'},
+  {name: 'ja-JP-KeitaNeural', label: 'Keita JP'},
+  {name: 'ko-KR-SunHiNeural', label: 'SunHi KR'},
+  {name: 'ar-SA-ZariyahNeural', label: 'Zariyah SA'},
 
-  // Ireland + South Africa + New Zealand - 4 voices
-  {name: 'en-IE-EmilyNeural', label: 'Emily IE'},
-  {name: 'en-IE-ConorNeural', label: 'Conor IE'},
+  // === AFRICA - 8 voices ===
+  {name: 'en-NG-AbeoNeural', label: 'Abeo NG'},
+  {name: 'en-NG-EzinneNeural', label: 'Ezinne NG'},
+  {name: 'en-KE-AsiliaNeural', label: 'Asilia KE'},
+  {name: 'en-KE-ChilembaNeural', label: 'Chilemba KE'},
   {name: 'en-ZA-LeahNeural', label: 'Leah ZA'},
-  {name: 'en-NZ-MitchellNeural', label: 'Mitchell NZ'}
+  {name: 'en-ZA-LukeNeural', label: 'Luke ZA'},
+  {name: 'en-TZ-ElimuNeural', label: 'Elimu TZ'},
+  {name: 'ar-EG-ShakirNeural', label: 'Shakir EG'},
+
+  // === OCEANIA - 6 voices ===
+  {name: 'en-AU-NatashaNeural', label: 'Natasha AU'},
+  {name: 'en-AU-WilliamNeural', label: 'William AU'},
+  {name: 'en-AU-AnnetteNeural', label: 'Annette AU'},
+  {name: 'en-AU-KenNeural', label: 'Ken AU'},
+  {name: 'en-NZ-MitchellNeural', label: 'Mitchell NZ'},
+  {name: 'en-NZ-MollyNeural', label: 'Molly NZ'},
+
+  // === SOUTH AMERICA - 4 voices ===
+  {name: 'pt-BR-FranciscaNeural', label: 'Francisca BR'},
+  {name: 'pt-BR-AntonioNeural', label: 'Antonio BR'},
+  {name: 'es-MX-DaliaNeural', label: 'Dalia MX'},
+  {name: 'es-AR-ElenaNeural', label: 'Elena AR'}
 ];
 
-// FIXED XTTS: Male + Female different voices
+// XTTS: Male + Female different voices
 const XTTS_VOICES = [
   {name: 'en-US-AriaNeural', label: 'XTTS Female'},
   {name: 'en-US-GuyNeural', label: 'XTTS Male'}
@@ -97,7 +135,7 @@ const ROBOTIC_VOICES = [
 app.get('/api/voices/:type', (req, res) => {
   const type = req.params.type;
   if (type === 'realistic') return res.json(REALISTIC_VOICES);
-  if (type === 'fair') return res.json(FAIR_VOICES); // Now 30+ voices
+  if (type === 'fair') return res.json(FAIR_VOICES); // Now 70 voices
   if (type === 'xtts') return res.json(XTTS_VOICES);
   if (type === 'robotic') return res.json(ROBOTIC_VOICES);
   res.json([]);
@@ -145,7 +183,6 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
   }
 });
 
-// FIXED: XTTS now uses selected voice, not hardcoded Guy
 app.post('/api/tts', async (req, res) => {
   try {
     const { text, voice = 'en-US-JennyNeural', type = 'realistic' } = req.body;
@@ -168,13 +205,13 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, 'dist')));  // ← removed 'client/'
+app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist/index.html')); // ← removed 'client/'
+  res.sendFile(path.join(__dirname, 'dist/index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 HYEZEN TTS v5 running on port ${PORT}`);
-  console.log(`✅ Fair Voices: ${FAIR_VOICES.length} loaded`);
+  console.log(`🚀 HYEZEN TTS v6 running on port ${PORT}`);
+  console.log(`✅ Fair Voices: ${FAIR_VOICES.length} loaded - 6 Continents Covered`);
   console.log('✅ XTTS Male/Female Fixed');
 });
