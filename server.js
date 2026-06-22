@@ -35,7 +35,7 @@ const REALISTIC_VOICES = [
   {name: 'en-US-ChristopherNeural', label: 'Christopher US'}
 ];
 
-// FAIR: 70 GLOBAL ACCENTS - ALL CONTINENTS
+// FAIR: 70 GLOBAL ACCENTS - 6 CONTINENTS COVERED
 const FAIR_VOICES = [
   // === NORTH AMERICA - 16 voices ===
   {name: 'en-US-JennyNeural', label: 'Jenny US'},
@@ -191,7 +191,7 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
   }
 });
 
-// === MAIN TTS WITH EXPERT MODE SPEED ===
+// === MAIN TTS WITH SPEED CONTROL ===
 app.post('/api/tts', async (req, res) => {
   try {
     const { text, voice = 'en-US-JennyNeural', type = 'realistic', speed = 1.0 } = req.body;
@@ -204,10 +204,12 @@ app.post('/api/tts', async (req, res) => {
       return res.json({success: true, robotic: true, text, voice});
     }
 
-    // Expert Mode: Convert speed to edge-tts --rate format
-    // 1.0 = 0%, 1.5 = +50%, 0.5 = -50%
-    const rate = speed !== 1.0 ? `${speed > 1 ? '+' : ''}${Math.round((speed - 1) * 100)}%` : '0%';
-    const cmd = `edge-tts --voice "${voice}" --text "${text}" --write-media "${filepath}" --rate="${rate}"`;
+    // Speed Control: Only add --rate when speed is NOT 1.0 to prevent crash
+    let cmd = `edge-tts --voice "${voice}" --text "${text}" --write-media "${filepath}"`;
+    if (speed !== 1.0) {
+      const rate = `${speed > 1 ? '+' : ''}${Math.round((speed - 1) * 100)}%`;
+      cmd += ` --rate="${rate}"`;
+    }
 
     exec(cmd, (error) => {
       if (error) {
@@ -229,5 +231,5 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 HYEZEN TTS v7 running on port ${PORT}`);
   console.log(`✅ Fair Voices: ${FAIR_VOICES.length} loaded - 6 Continents Covered`);
-  console.log('✅ Expert Mode: Speed control enabled');
+  console.log('✅ Speed Control: 0.5x to 2.0x enabled');
 });
