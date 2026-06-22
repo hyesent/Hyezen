@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_URL = import.meta.env.PROD? '' : 'http://localhost:10000';
+const API_URL = import.meta.env.PROD? '' : 'http://localhost:3000';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('realistic');
@@ -44,7 +44,7 @@ export default function App() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({behavior: 'smooth'});
-  }, [chat]);
+  }, []);
 
   useEffect(() => {
     const loadVoices = () => setSynthVoices(speechSynthesis.getVoices());
@@ -66,6 +66,7 @@ export default function App() {
   async function previewVoice(v) {
     setVoice(v);
     if (activeTab === 'robotic') {
+      speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance('Voice preview testing 1 2 3');
       const selectedVoice = getRoboticVoice(v);
       if (selectedVoice) utterance.voice = selectedVoice;
@@ -82,7 +83,7 @@ export default function App() {
         const data = await res.json();
         if(data.url) {
           const audio = new Audio(data.url);
-          audio.play();
+          audio.play().catch(e => console.log('Audio play failed:', e));
         }
       } catch (err) {
         console.error('Preview error:', err);
@@ -141,6 +142,7 @@ export default function App() {
         });
         const data = await res.json();
         if(data.robotic) {
+          speechSynthesis.cancel();
           const utterance = new SpeechSynthesisUtterance(currentText);
           const selectedVoice = getRoboticVoice(voice);
           if (selectedVoice) utterance.voice = selectedVoice;
@@ -250,7 +252,7 @@ export default function App() {
         <div style={{fontSize: '32px', fontWeight: '800', marginBottom: '6px', letterSpacing: '-1.5px'}}>{themes[activeTab].name}</div>
         <div style={{fontSize: '15px', opacity: 0.85}}>{themes[activeTab].sub}</div>
 
-        {/* EXPERT MODE TOGGLE */}
+        {/* SPEED CONTROL TOGGLE */}
         <div style={{marginTop: '16px', display: 'flex', alignItems: 'center', gap: '10px'}}>
           <button onClick={() => setExpertMode(!expertMode)} style={{
             padding: '8px 14px',
@@ -263,11 +265,11 @@ export default function App() {
             cursor: 'pointer',
             backdropFilter: 'blur(10px)'
           }}>
-            {expertMode? '⚡ Expert ON' : '⚙️ Expert Mode'}
+            {expertMode? '⚡ Speed ON' : '⚙️ Speed Control'}
           </button>
         </div>
 
-        {/* EXPERT CONTROLS */}
+        {/* SPEED CONTROLS */}
         {expertMode && (
           <div style={{marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', backdropFilter: 'blur(10px)'}}>
             <div style={{marginBottom: '10px'}}>
@@ -315,7 +317,8 @@ export default function App() {
                         cursor: 'pointer',
                         fontWeight: '600'
                       }}>
-                      ⬇️ Download
+                      
+                        Download
                     </button>
                   </div>
                 </div>
@@ -383,4 +386,4 @@ export default function App() {
       </div>
     </div>
   );
-}
+    }
