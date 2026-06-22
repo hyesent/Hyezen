@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_URL = import.meta.env.PROD? '' : 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function App() {
+  const [backendReady, setBackendReady] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(HYEZEN-AI Voice Clone App...');
+
   const [activeTab, setActiveTab] = useState('realistic');
   const [text, setText] = useState('');
   const [voices, setVoices] = useState([]);
@@ -36,11 +39,44 @@ export default function App() {
     {id: 'robotic', name: 'Basic-Robotic'}
   ];
 
+  // WAKE UP RENDER BACKEND
   useEffect(() => {
+    wakeBackend();
+  }, []);
+
+  async function wakeBackend() {
+    setLoadingStatus('Waking up servers...');
+    const maxRetries = 20;
+    let attempts = 0;
+
+    while (attempts < maxRetries) {
+      try {
+        const res = await fetch(`${API_URL}/api/health`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(3000)
+        });
+        if (res.ok) {
+          setLoadingStatus('Servers ready!');
+          setTimeout(() => setBackendReady(true), 500);
+          return;
+        }
+      } catch (err) {
+        console.log('Backend sleeping, attempt:', attempts + 1);
+      }
+      attempts++;
+      setLoadingStatus(`Waking up servers... ${attempts}/${maxRetries}`);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    setLoadingStatus('Loading anyway...');
+    setBackendReady(true);
+  }
+
+  useEffect(() => {
+    if (!backendReady) return;
     fetchVoices(activeTab);
     setChat([{type: 'bot', text: `Welcome to ${themes[activeTab].name} 👋 Tap a voice card below to preview`}]);
     setVoiceId('');
-  }, [activeTab]);
+  }, [activeTab, backendReady]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({behavior: 'smooth'});
@@ -130,7 +166,7 @@ export default function App() {
         });
         const data = await res.json();
         if(data.success) {
-          setChat(prev => [...prev, {type: 'bot', audio: data.url, tier: 'ultra', filename: `clone_${Date.now()}.mp3`}]);
+          setChat(prev => [...prev, {type: 'bot', audio: data.url, tier: 'elevenlabs', filename: `elevenlabs_${Date.now()}.mp3`}]);
         } else {
           setChat(prev => [...prev, {type: 'bot', text: 'Error: ' + data.error}]);
         }
@@ -149,7 +185,7 @@ export default function App() {
           utterance.rate = expertMode? speed : 1.1;
           utterance.pitch = expertMode? pitch : (voice === 'female'? 1.3 : 0.8);
           speechSynthesis.speak(utterance);
-          setChat(prev => [...prev, {type: 'bot', text: `🔊 ${voice === 'female'? 'Female' : 'Male'} robotic voice played`, tier: 'basic'}]);
+          setChat(prev => [...prev, {type: 'bot', text: `🔊 ${voice === 'female'? 'Female' : 'Male'} robotic voice played at ${expertMode? speed.toFixed(1) : '1.0'}x`}]);
         } else if(data.url) {
           setChat(prev => [...prev, {type: 'bot', audio: data.url, tier: activeTab, filename: `${activeTab}_${Date.now()}.mp3`}]);
         } else {
@@ -230,6 +266,57 @@ export default function App() {
     });
   }
 
+  // LOADING SCREEN
+  if (!backendReady) {
+    return (
+      <div style={{
+        maxWidth: '500px',
+        margin: '0 auto',
+        height: '100vh',
+        background: '#0a0a0f',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto',
+        color: '#fff'
+      }}>
+        <div style={{
+          background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          fontSize: '48px',
+          fontWeight: '800',
+          letterSpacing: '6px',
+          marginBottom: '24px'
+        }}>
+          HYEZEN
+        </div>
+
+        <div style={{
+          width: '60px',
+          height: '60px',
+          border: '4px solid rgba(255,255,255,0.1)',
+          borderTop: '4px solid #667eea',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+          marginBottom: '20px'
+        }}></div>
+
+        <div style={{fontSize: '14px', opacity: 0.7, textAlign: 'center'}}>
+          {loadingStatus}
+        </div>
+
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <div style={{maxWidth: '500px', margin: '0 auto', height: '100vh', background: '#0a0a0f', color: '#fff', display: 'flex', flexDirection: 'column', fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto', overflow: 'hidden'}}>
       <div style={{background: themes[activeTab].bg, padding: '40px 24px 30px', backdropFilter: 'blur(20px)', borderBottomLeftRadius: '30px', borderBottomRightRadius: '30px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', position: 'relative', zIndex: 10}}>
@@ -250,14 +337,14 @@ export default function App() {
           </div>
         </div>
         <div style={{fontSize: '32px', fontWeight: '800', marginBottom: '6px', letterSpacing: '-1.5px'}}>{themes[activeTab].name}</div>
-        <div style={{fontSize: '15px', opacity: 0.85}}>{themes[activeTab].sub}</div>
+        <div style={{fontSize: '15px', opacity: 0.85, marginBottom: '16px'}}>{themes[activeTab].sub}</div>
 
         {/* SPEED CONTROL TOGGLE */}
-        <div style={{marginTop: '16px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+        <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
           <button onClick={() => setExpertMode(!expertMode)} style={{
             padding: '8px 14px',
-            background: expertMode? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)',
-            border: '1px solid rgba(255,255,255,0.2)',
+            background: expertMode? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)',
+            border: '1px solid rgba(255,255,255,0.3)',
             borderRadius: '10px',
             color: '#fff',
             fontSize: '13px',
@@ -274,14 +361,28 @@ export default function App() {
           <div style={{marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', backdropFilter: 'blur(10px)'}}>
             <div style={{marginBottom: '10px'}}>
               <div style={{fontSize: '12px', opacity: 0.8, marginBottom: '4px'}}>Speed: {speed.toFixed(1)}x</div>
-              <input type="range" min="0.5" max="2.0" step="0.1" value={speed} onChange={e => setSpeed(parseFloat(e.target.value))}
-                style={{width: '100%', accentColor: '#fff'}} />
+              <input
+                type="range"
+                min="0.5"
+                max="2.0"
+                step="0.1"
+                value={speed}
+                onChange={e => setSpeed(parseFloat(e.target.value))}
+                style={{width: '100%', accentColor: '#fff'}}
+              />
             </div>
             {activeTab === 'robotic' && (
               <div>
                 <div style={{fontSize: '12px', opacity: 0.8, marginBottom: '4px'}}>Pitch: {pitch.toFixed(1)}</div>
-                <input type="range" min="0.5" max="2.0" step="0.1" value={pitch} onChange={e => setPitch(parseFloat(e.target.value))}
-                  style={{width: '100%', accentColor: '#fff'}} />
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  value={pitch}
+                  onChange={e => setPitch(parseFloat(e.target.value))}
+                  style={{width: '100%', accentColor: '#fff'}}
+                />
               </div>
             )}
           </div>
@@ -292,7 +393,7 @@ export default function App() {
         {chat.map((msg, i) => (
           <div key={i} style={{display: 'flex', justifyContent: msg.type==='user'? 'flex-end' : 'flex-start', marginBottom: '12px'}}>
             <div style={{
-              maxWidth: '70%',
+              maxWidth: '75%',
               padding: msg.audio? '8px' : '12px 16px',
               borderRadius: '18px',
               background: msg.type==='user'? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.08)',
@@ -306,19 +407,17 @@ export default function App() {
                 <div>
                   <audio controls src={msg.audio} style={{width: '220px', borderRadius: '12px', marginBottom: '8px'}}></audio>
                   <div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}>
-                    <button onClick={() => downloadAudio(msg.audio, msg.filename)}
-                      style={{
-                        padding: '6px 12px',
-                        background: 'rgba(255,255,255,0.15)',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        borderRadius: '8px',
-                        color: '#fff',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        fontWeight: '600'
-                      }}>
-                      
-                        Download
+                    <button onClick={() => downloadAudio(msg.audio, msg.filename)} style={{
+                      padding: '6px 12px',
+                      background: 'rgba(255,255,255,0.15)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      fontWeight: '600'
+                    }}>
+                       Download
                     </button>
                   </div>
                 </div>
@@ -386,4 +485,4 @@ export default function App() {
       </div>
     </div>
   );
-    }
+}
