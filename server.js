@@ -135,12 +135,13 @@ const ROBOTIC_VOICES = [
 app.get('/api/voices/:type', (req, res) => {
   const type = req.params.type;
   if (type === 'realistic') return res.json(REALISTIC_VOICES);
-  if (type === 'fair') return res.json(FAIR_VOICES); // Now 70 voices
+  if (type === 'fair') return res.json(FAIR_VOICES);
   if (type === 'xtts') return res.json(XTTS_VOICES);
   if (type === 'robotic') return res.json(ROBOTIC_VOICES);
   res.json([]);
 });
 
+// === ELEVENLABS CLONE ===
 app.post('/api/elevenlabs/clone', async (req, res) => {
   try {
     const { audioBase64, name } = req.body;
@@ -151,17 +152,22 @@ app.post('/api/elevenlabs/clone', async (req, res) => {
 
     const response = await fetch('https://api.elevenlabs.io/v1/voices/add', {
       method: 'POST',
-      headers: {'xi-api-key': process.env.ELEVENLABS_API_KEY,...form.getHeaders()},
+      headers: {'xi-api-key': process.env.ELEVENLABS_API_KEY, ...form.getHeaders()},
       body: form
     });
 
     const data = await response.json();
-    res.json({success: true, voice_id: data.voice_id});
+    if (data.voice_id) {
+      res.json({success: true, voice_id: data.voice_id});
+    } else {
+      res.status(400).json({error: data.detail || 'Clone failed'});
+    }
   } catch (e) {
     res.status(500).json({error: e.message});
   }
 });
 
+// === ELEVENLABS TTS ===
 app.post('/api/elevenlabs/tts', async (req, res) => {
   try {
     const { text, voice_id } = req.body;
@@ -174,6 +180,8 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
       body: JSON.stringify({text, model_id: 'eleven_multilingual_v2'})
     });
 
+    if (!response.ok) throw new Error(`ElevenLabs error: ${response.status}`);
+
     const buffer = await response.buffer();
     const filename = `eleven_${uuidv4()}.mp3`;
     fs.writeFileSync(path.join(__dirname, 'audio', filename), buffer);
@@ -183,9 +191,10 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
   }
 });
 
+// === MAIN TTS WITH EXPERT MODE SPEED ===
 app.post('/api/tts', async (req, res) => {
   try {
-    const { text, voice = 'en-US-JennyNeural', type = 'realistic' } = req.body;
+    const { text, voice = 'en-US-JennyNeural', type = 'realistic', speed = 1.0 } = req.body;
     if (!text) return res.status(400).json({ error: 'Text required' });
 
     const filename = `${type}_${uuidv4()}.mp3`;
@@ -195,9 +204,16 @@ app.post('/api/tts', async (req, res) => {
       return res.json({success: true, robotic: true, text, voice});
     }
 
-    const cmd = `edge-tts --voice "${voice}" --text "${text}" --write-media "${filepath}"`;
+    // Expert Mode: Convert speed to edge-tts --rate format
+    // 1.0 = 0%, 1.5 = +50%, 0.5 = -50%
+    const rate = speed !== 1.0 ? `${speed > 1 ? '+' : ''}${Math.round((speed - 1) * 100)}%` : '0%';
+    const cmd = `edge-tts --voice "${voice}" --text "${text}" --write-media "${filepath}" --rate="${rate}"`;
+
     exec(cmd, (error) => {
-      if (error) return res.status(500).json({ error: error.message });
+      if (error) {
+        console.error('Edge-TTS Error:', error);
+        return res.status(500).json({ error: error.message });
+      }
       res.json({ success: true, url: `/audio/${filename}` });
     });
   } catch (e) {
@@ -211,7 +227,7 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 HYEZEN TTS v6 running on port ${PORT}`);
+  console.log(`🚀 HYEZEN TTS v7 running on port ${PORT}`);
   console.log(`✅ Fair Voices: ${FAIR_VOICES.length} loaded - 6 Continents Covered`);
-  console.log('✅ XTTS Male/Female Fixed');
+  console.log('✅ Expert Mode: Speed control enabled');
 });
