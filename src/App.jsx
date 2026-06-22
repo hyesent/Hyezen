@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen.onrender.com';
+const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen-hyvb.onrender.com';
 
 export default function App() {
   const [backendReady, setBackendReady] = useState(false);
