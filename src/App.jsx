@@ -4,7 +4,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function App() {
   const [backendReady, setBackendReady] = useState(false);
-  const [loadingStatus, setLoadingStatus] = useState(HYEZEN-AI Voice Clone App...');
+  const [loadingStatus, setLoadingStatus] = useState('Starting HYEZEN...');
 
   const [activeTab, setActiveTab] = useState('realistic');
   const [text, setText] = useState('');
@@ -39,7 +39,6 @@ export default function App() {
     {id: 'robotic', name: 'Basic-Robotic'}
   ];
 
-  // WAKE UP RENDER BACKEND
   useEffect(() => {
     wakeBackend();
   }, []);
@@ -80,7 +79,7 @@ export default function App() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({behavior: 'smooth'});
-  }, []);
+  }, [chat]);
 
   useEffect(() => {
     const loadVoices = () => setSynthVoices(speechSynthesis.getVoices());
@@ -244,7 +243,7 @@ export default function App() {
       }, 10000);
 
     } catch (err) {
-      alert('Mic permission denied! Click 🔒 in address bar → Site settings → Microphone → Allow → Refresh');
+      alert('Mic permission denied! Click lock icon in address bar → Site settings → Microphone → Allow → Refresh');
       setRecording(false);
     }
   }
@@ -266,7 +265,6 @@ export default function App() {
     });
   }
 
-  // LOADING SCREEN
   if (!backendReady) {
     return (
       <div style={{
@@ -339,7 +337,6 @@ export default function App() {
         <div style={{fontSize: '32px', fontWeight: '800', marginBottom: '6px', letterSpacing: '-1.5px'}}>{themes[activeTab].name}</div>
         <div style={{fontSize: '15px', opacity: 0.85, marginBottom: '16px'}}>{themes[activeTab].sub}</div>
 
-        {/* SPEED CONTROL TOGGLE */}
         <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
           <button onClick={() => setExpertMode(!expertMode)} style={{
             padding: '8px 14px',
@@ -356,7 +353,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* SPEED CONTROLS */}
         {expertMode && (
           <div style={{marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', backdropFilter: 'blur(10px)'}}>
             <div style={{marginBottom: '10px'}}>
@@ -485,4 +481,4 @@ export default function App() {
       </div>
     </div>
   );
-}
+    }Download
