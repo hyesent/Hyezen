@@ -204,21 +204,33 @@ app.post('/api/tts', async (req, res) => {
       return res.json({success: true, robotic: true, text, voice});
     }
 
-    // Speed Control: Only add --rate when speed is NOT 1.0 to prevent crash
-    let cmd = `edge-tts --voice "${voice}" --text "${text}" --write-media "${filepath}"`;
+    // Ensure audio directory exists
+    await fs.promises.mkdir(path.join(__dirname, 'audio'), { recursive: true });
+
+    // FIXED: Use python3 -m edge_tts for Render compatibility
+    let cmd = `python3 -m edge_tts --voice "${voice}" --text "${text.replace(/"/g, '\\"')}" --write-media "${filepath}"`;
     if (speed !== 1.0) {
       const rate = `${speed > 1 ? '+' : ''}${Math.round((speed - 1) * 100)}%`;
       cmd += ` --rate="${rate}"`;
     }
 
-    exec(cmd, (error) => {
+    exec(cmd, (error, stdout, stderr) => {
       if (error) {
         console.error('Edge-TTS Error:', error);
-        return res.status(500).json({ error: error.message });
+        console.error('stderr:', stderr);
+        return res.status(500).json({ error: `TTS failed: ${error.message}` });
       }
+      
+      // Verify file was actually created and has size > 0
+      if (!fs.existsSync(filepath) || fs.statSync(filepath).size === 0) {
+        console.error('MP3 file empty or missing:', filepath);
+        return res.status(500).json({ error: 'Generated audio file is empty' });
+      }
+      
       res.json({ success: true, url: `/audio/${filename}` });
     });
   } catch (e) {
+    console.error('TTS Route Error:', e);
     res.status(500).json({ error: e.message });
   }
 });
