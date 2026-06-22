@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen-hyvb.onrender.com';
+const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen.onrender.com';
 
 export default function App() {
   const [backendReady, setBackendReady] = useState(false);
@@ -117,7 +117,7 @@ export default function App() {
         });
         const data = await res.json();
         if(data.url) {
-          const audio = new Audio(data.url);
+          const audio = new Audio(`${API_URL}${data.url}`);
           audio.play().catch(e => console.log('Audio play failed:', e));
         }
       } catch (err) {
@@ -165,7 +165,7 @@ export default function App() {
         });
         const data = await res.json();
         if(data.success) {
-          setChat(prev => [...prev, {type: 'bot', audio: data.url, tier: 'elevenlabs', filename: `elevenlabs_${Date.now()}.mp3`}]);
+          setChat(prev => [...prev, {type: 'bot', audio: `${API_URL}${data.url}`, tier: 'elevenlabs', filename: `elevenlabs_${Date.now()}.mp3`}]);
         } else {
           setChat(prev => [...prev, {type: 'bot', text: 'Error: ' + data.error}]);
         }
@@ -186,7 +186,7 @@ export default function App() {
           speechSynthesis.speak(utterance);
           setChat(prev => [...prev, {type: 'bot', text: `🔊 ${voice === 'female'? 'Female' : 'Male'} robotic voice played at ${expertMode? speed.toFixed(1) : '1.0'}x`}]);
         } else if(data.url) {
-          setChat(prev => [...prev, {type: 'bot', audio: data.url, tier: activeTab, filename: `${activeTab}_${Date.now()}.mp3`}]);
+          setChat(prev => [...prev, {type: 'bot', audio: `${API_URL}${data.url}`, tier: activeTab, filename: `${activeTab}_${Date.now()}.mp3`}]);
         } else {
           setChat(prev => [...prev, {type: 'bot', text: 'Error: ' + data.error}]);
         }
