@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_URL = import.meta.env.PROD? '' : 'http://localhost:3000';
+const API_URL = import.meta.env.PROD? '' : 'http://localhost:10000';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('realistic');
@@ -13,6 +13,9 @@ export default function App() {
   const [voiceId, setVoiceId] = useState('');
   const [recording, setRecording] = useState(false);
   const [synthVoices, setSynthVoices] = useState([]);
+  const [expertMode, setExpertMode] = useState(false);
+  const [speed, setSpeed] = useState(1.0);
+  const [pitch, setPitch] = useState(1.0);
   const mediaRecorder = useRef(null);
   const chunks = useRef([]);
   const chatEndRef = useRef(null);
@@ -21,7 +24,7 @@ export default function App() {
     elevenlabs: {bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', name: 'ULTRA VOICE CLONE', sub: 'Clone your voice with AI'},
     xtts: {bg: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', name: 'BEST-XTTS', sub: 'Male & Female voices'},
     realistic: {bg: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', name: 'GOOD-REALISTIC TTS', sub: '8 Premium Microsoft voices'},
-    fair: {bg: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', name: 'FAIR-FULL TTS', sub: '30+ Microsoft voices'},
+    fair: {bg: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', name: 'FAIR-FULL TTS', sub: '70+ Global voices'},
     robotic: {bg: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)', name: 'BASIC-ROBOTIC', sub: 'Male & Female robotic'}
   };
 
@@ -36,7 +39,7 @@ export default function App() {
   useEffect(() => {
     fetchVoices(activeTab);
     setChat([{type: 'bot', text: `Welcome to ${themes[activeTab].name} 👋 Tap a voice card below to preview`}]);
-    setVoiceId(''); // FIX: Reset clone when switching tabs
+    setVoiceId('');
   }, [activeTab]);
 
   useEffect(() => {
@@ -66,15 +69,15 @@ export default function App() {
       const utterance = new SpeechSynthesisUtterance('Voice preview testing 1 2 3');
       const selectedVoice = getRoboticVoice(v);
       if (selectedVoice) utterance.voice = selectedVoice;
-      utterance.rate = 1.1;
-      utterance.pitch = v === 'female'? 1.3 : 0.8;
+      utterance.rate = expertMode? speed : 1.1;
+      utterance.pitch = expertMode? pitch : (v === 'female'? 1.3 : 0.8);
       speechSynthesis.speak(utterance);
     } else {
       try {
         const res = await fetch(`${API_URL}/api/tts`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text: 'Voice preview', voice: v, type: activeTab})
+          body: JSON.stringify({text: 'Voice preview', voice: v, type: activeTab, speed: expertMode? speed : 1.0})
         });
         const data = await res.json();
         if(data.url) {
@@ -94,6 +97,15 @@ export default function App() {
     } else {
       return synthVoices.find(v => v.name.toLowerCase().includes('zira') || v.name.toLowerCase().includes('susan') || v.name.toLowerCase().includes('female')) || synthVoices[1] || synthVoices[0];
     }
+  }
+
+  function downloadAudio(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || `hyezen_${Date.now()}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   async function sendText() {
@@ -117,7 +129,7 @@ export default function App() {
         });
         const data = await res.json();
         if(data.success) {
-          setChat(prev => [...prev, {type: 'bot', audio: data.url}]);
+          setChat(prev => [...prev, {type: 'bot', audio: data.url, tier: 'ultra', filename: `clone_${Date.now()}.mp3`}]);
         } else {
           setChat(prev => [...prev, {type: 'bot', text: 'Error: ' + data.error}]);
         }
@@ -125,19 +137,19 @@ export default function App() {
         const res = await fetch(`${API_URL}/api/tts`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text: currentText, voice, type: activeTab})
+          body: JSON.stringify({text: currentText, voice, type: activeTab, speed: expertMode? speed : 1.0})
         });
         const data = await res.json();
         if(data.robotic) {
           const utterance = new SpeechSynthesisUtterance(currentText);
           const selectedVoice = getRoboticVoice(voice);
           if (selectedVoice) utterance.voice = selectedVoice;
-          utterance.rate = 1.1;
-          utterance.pitch = voice === 'female'? 1.3 : 0.8;
+          utterance.rate = expertMode? speed : 1.1;
+          utterance.pitch = expertMode? pitch : (voice === 'female'? 1.3 : 0.8);
           speechSynthesis.speak(utterance);
-          setChat(prev => [...prev, {type: 'bot', text: `🔊 ${voice === 'female'? 'Female' : 'Male'} robotic voice played`}]);
+          setChat(prev => [...prev, {type: 'bot', text: `🔊 ${voice === 'female'? 'Female' : 'Male'} robotic voice played`, tier: 'basic'}]);
         } else if(data.url) {
-          setChat(prev => [...prev, {type: 'bot', audio: data.url}]);
+          setChat(prev => [...prev, {type: 'bot', audio: data.url, tier: activeTab, filename: `${activeTab}_${Date.now()}.mp3`}]);
         } else {
           setChat(prev => [...prev, {type: 'bot', text: 'Error: ' + data.error}]);
         }
@@ -149,7 +161,7 @@ export default function App() {
   }
 
   async function startRecording(e) {
-    e.preventDefault(); // FIX 1: Stops phone "speak" popup
+    e.preventDefault();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({audio: true});
       mediaRecorder.current = new MediaRecorder(stream);
@@ -158,7 +170,7 @@ export default function App() {
         if(e.data.size > 0) chunks.current.push(e.data);
       };
       mediaRecorder.current.onstop = async () => {
-        setRecording(false); // FIX 2: Force button to release
+        setRecording(false);
         const blob = new Blob(chunks.current, {type: 'audio/webm'});
         const base64 = await blobToBase64(blob);
         setChat(prev => [...prev, {type: 'user', text: '🎤 Voice sample recorded'}]);
@@ -173,7 +185,7 @@ export default function App() {
           const data = await res.json();
           setLoading(false);
           if(data.success) {
-            setVoiceId(data.voice_id); // FIX 3: This shows text input
+            setVoiceId(data.voice_id);
             setChat(prev => [...prev, {type: 'bot', text: '✓ Voice cloned! Now type text below to speak in your voice'}]);
           } else {
             setChat(prev => [...prev, {type: 'bot', text: 'Clone failed: ' + data.error}]);
@@ -187,7 +199,6 @@ export default function App() {
       mediaRecorder.current.start();
       setRecording(true);
 
-      // FIX 4: Auto-stop after 10s so mic never traps you
       setTimeout(() => {
         if (mediaRecorder.current && mediaRecorder.current.state === 'recording') {
           stopRecording();
@@ -238,6 +249,41 @@ export default function App() {
         </div>
         <div style={{fontSize: '32px', fontWeight: '800', marginBottom: '6px', letterSpacing: '-1.5px'}}>{themes[activeTab].name}</div>
         <div style={{fontSize: '15px', opacity: 0.85}}>{themes[activeTab].sub}</div>
+
+        {/* EXPERT MODE TOGGLE */}
+        <div style={{marginTop: '16px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+          <button onClick={() => setExpertMode(!expertMode)} style={{
+            padding: '8px 14px',
+            background: expertMode? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '10px',
+            color: '#fff',
+            fontSize: '13px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            backdropFilter: 'blur(10px)'
+          }}>
+            {expertMode? '⚡ Expert ON' : '⚙️ Expert Mode'}
+          </button>
+        </div>
+
+        {/* EXPERT CONTROLS */}
+        {expertMode && (
+          <div style={{marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', backdropFilter: 'blur(10px)'}}>
+            <div style={{marginBottom: '10px'}}>
+              <div style={{fontSize: '12px', opacity: 0.8, marginBottom: '4px'}}>Speed: {speed.toFixed(1)}x</div>
+              <input type="range" min="0.5" max="2.0" step="0.1" value={speed} onChange={e => setSpeed(parseFloat(e.target.value))}
+                style={{width: '100%', accentColor: '#fff'}} />
+            </div>
+            {activeTab === 'robotic' && (
+              <div>
+                <div style={{fontSize: '12px', opacity: 0.8, marginBottom: '4px'}}>Pitch: {pitch.toFixed(1)}</div>
+                <input type="range" min="0.5" max="2.0" step="0.1" value={pitch} onChange={e => setPitch(parseFloat(e.target.value))}
+                  style={{width: '100%', accentColor: '#fff'}} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{flex: 1, overflowY: 'auto', padding: '20px', background: '#0a0a0f'}}>
@@ -245,7 +291,7 @@ export default function App() {
           <div key={i} style={{display: 'flex', justifyContent: msg.type==='user'? 'flex-end' : 'flex-start', marginBottom: '12px'}}>
             <div style={{
               maxWidth: '70%',
-              padding: msg.audio? '6px' : '12px 16px',
+              padding: msg.audio? '8px' : '12px 16px',
               borderRadius: '18px',
               background: msg.type==='user'? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.08)',
               backdropFilter: 'blur(10px)',
@@ -254,7 +300,26 @@ export default function App() {
               boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
               border: msg.type==='bot'? '1px solid rgba(255,255,255,0.05)' : 'none'
             }}>
-              {msg.audio? <audio controls src={msg.audio} style={{width: '220px', borderRadius: '12px'}}></audio> : msg.text}
+              {msg.audio? (
+                <div>
+                  <audio controls src={msg.audio} style={{width: '220px', borderRadius: '12px', marginBottom: '8px'}}></audio>
+                  <div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}>
+                    <button onClick={() => downloadAudio(msg.audio, msg.filename)}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'rgba(255,255,255,0.15)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        fontWeight: '600'
+                      }}>
+                      ⬇️ Download
+                    </button>
+                  </div>
+                </div>
+              ) : msg.text}
             </div>
           </div>
         ))}
