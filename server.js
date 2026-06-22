@@ -223,9 +223,9 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, 'dist')));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist/index.html'));
+// === HEALTH CHECK FOR VERCEL LOADING SCREEN ===
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() });
 });
 
 app.listen(PORT, () => {
