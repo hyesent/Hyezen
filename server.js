@@ -35,7 +35,7 @@ const REALISTIC_VOICES = [
   {name: 'en-US-ChristopherNeural', label: 'Christopher US'}
 ];
 
-// FAIR: 70 GLOBAL ACCENTS - 6 CONTINENTS COVERED
+// FAIR: 78 GLOBAL ACCENTS - 6 CONTINENTS + ALL BRIEFING LANGS
 const FAIR_VOICES = [
   // === NORTH AMERICA - 16 voices ===
   {name: 'en-US-JennyNeural', label: 'Jenny US'},
@@ -55,7 +55,7 @@ const FAIR_VOICES = [
   {name: 'en-CA-EmmaNeural', label: 'Emma CA'},
   {name: 'en-CA-BrentNeural', label: 'Brent CA'},
 
-  // === EUROPE - 20 voices ===
+  // === EUROPE - 28 voices ===
   {name: 'en-GB-SoniaNeural', label: 'Sonia UK'},
   {name: 'en-GB-RyanNeural', label: 'Ryan UK'},
   {name: 'en-GB-LibbyNeural', label: 'Libby UK'},
@@ -76,6 +76,18 @@ const FAIR_VOICES = [
   {name: 'it-IT-DiegoNeural', label: 'Diego IT'},
   {name: 'pt-PT-RaquelNeural', label: 'Raquel PT'},
   {name: 'ru-RU-SvetlanaNeural', label: 'Svetlana RU'},
+  {name: 'nl-NL-FennaNeural', label: 'Fenna NL'},
+  {name: 'nl-NL-MaartenNeural', label: 'Maarten NL'},
+  {name: 'pl-PL-ZofiaNeural', label: 'Zofia PL'},
+  {name: 'pl-PL-MarekNeural', label: 'Marek PL'},
+  {name: 'da-DK-ChristelNeural', label: 'Christel DK'},
+  {name: 'da-DK-JeppeNeural', label: 'Jeppe DK'},
+  {name: 'sv-SE-SofieNeural', label: 'Sofie SE'},
+  {name: 'sv-SE-MattiasNeural', label: 'Mattias SE'},
+  {name: 'nb-NO-IselinNeural', label: 'Iselin NO'},
+  {name: 'nb-NO-FinnNeural', label: 'Finn NO'},
+  {name: 'fi-FI-NooraNeural', label: 'Noora FI'},
+  {name: 'fi-FI-HarriNeural', label: 'Harri FI'},
 
   // === ASIA - 16 voices ===
   {name: 'en-IN-NeerjaNeural', label: 'Neerja IN'},
