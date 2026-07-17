@@ -1,7 +1,7 @@
 {
   "name": "hyezen-tts-backend",
   "version": "10.0.0",
-  "description": "HYEZEN TTS Backend",
+  "description": "HYEZEN TTS Backend - Edge-TTS, SSML pipeline, emotions, character voices",
   "main": "hyezen/server.js",
   "type": "module",
   "scripts": {
