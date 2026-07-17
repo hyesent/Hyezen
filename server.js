@@ -551,7 +551,8 @@ async function buildSSMLFull({
 }
 
 // ============================================================
-//  EDGE-TTS WRAPPER (with concurrency queue)
+//  EDGE-TTS WRAPPER (with concurrency queue) - FIXED
+//  Uses -f (file) flag for proper SSML processing
 // ============================================================
 let queue = [];
 let processing = false;
@@ -568,14 +569,23 @@ async function processQueue() {
   if (processing || queue.length === 0) return;
   processing = true;
   const task = queue.shift();
+  
+  let tempFile = null;
   try {
-    // Edge-TTS uses -t for text (SSML works as text input)
-    const args = ['-t', task.ssml, '--voice', task.voice, '--write-media', task.outputFile];
+    // Write SSML to temporary file for proper processing
+    tempFile = path.join(__dirname, 'audio', `temp_${uuidv4()}.ssml`);
+    fs.writeFileSync(tempFile, task.ssml, 'utf8');
+    
+    // Use -f flag to read SSML from file (this properly processes SSML)
+    const args = ['-f', tempFile, '--voice', task.voice, '--write-media', task.outputFile];
     
     console.log(`🔊 Generating audio for: ${path.basename(task.outputFile)}`);
     
     await new Promise((res, rej) => {
       execFile('edge-tts', args, (error, stdout, stderr) => {
+        // Clean up temp file
+        try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+        
         if (error) {
           console.error('❌ Edge-TTS error:', error.message);
           if (stderr) console.error('stderr:', stderr);
@@ -583,7 +593,7 @@ async function processQueue() {
         } else if (!fs.existsSync(task.outputFile) || fs.statSync(task.outputFile).size === 0) {
           rej(new Error('Audio file empty or not created'));
         } else {
-          console.log(`✅ Audio generated successfully (${fs.statSync(task.outputFile).size} bytes)`);
+          console.log(`✅ Audio generated successfully (${(fs.statSync(task.outputFile).size / 1024).toFixed(1)} KB)`);
           res();
         }
       });
@@ -591,6 +601,8 @@ async function processQueue() {
     task.resolve();
   } catch (e) {
     console.error('❌ Queue error:', e);
+    // Clean up temp file if it exists
+    try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
     task.reject(e);
   } finally {
     processing = false;
