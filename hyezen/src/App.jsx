@@ -17,17 +17,10 @@ export default function App() {
   const [recording, setRecording] = useState(false);
   const [synthVoices, setSynthVoices] = useState([]);
 
-  // v10 features
+  // --- New states for v10 features ---
   const [modes, setModes] = useState([]);
   const [selectedMode, setSelectedMode] = useState('story');
-  const [characters, setCharacters] = useState('{}');
-  
-  // Custom mode controls
-  const [showCustomControls, setShowCustomControls] = useState(true);
-  const [customSpeed, setCustomSpeed] = useState(1.0);
-  const [customPitch, setCustomPitch] = useState(0);
-  const [customMode, setCustomMode] = useState('story');
-  const [customVoice, setCustomVoice] = useState('');
+  const [characters, setCharacters] = useState('{}'); // JSON string for character mapping
 
   const mediaRecorder = useRef(null);
   const chunks = useRef([]);
@@ -38,8 +31,7 @@ export default function App() {
     xtts: {bg: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', name: 'BEST-XTTS', sub: 'Male & Female voices'},
     realistic: {bg: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', name: 'GOOD-REALISTIC TTS', sub: '150+ Premium voices'},
     fair: {bg: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', name: 'FAIR-FULL TTS', sub: '78 Global voices'},
-    robotic: {bg: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)', name: 'BASIC-ROBOTIC', sub: 'Male & Female robotic'},
-    custom: {bg: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', name: '🎛️ CUSTOM TTS', sub: 'Full control over speed, pitch & voice'}
+    robotic: {bg: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)', name: 'BASIC-ROBOTIC', sub: 'Male & Female robotic'}
   };
 
   const tabs = [
@@ -47,8 +39,7 @@ export default function App() {
     {id: 'xtts', name: 'Best-XTTS'},
     {id: 'realistic', name: 'Good-Realistic TTS'},
     {id: 'fair', name: 'Fair-Full TTS'},
-    {id: 'robotic', name: 'Basic-Robotic'},
-    {id: 'custom', name: '🎛️ Custom'}
+    {id: 'robotic', name: 'Basic-Robotic'}
   ];
 
   useEffect(() => {
@@ -59,6 +50,7 @@ export default function App() {
     setLoadingStatus('Waking up servers...');
     const maxRetries = 20;
     let attempts = 0;
+
     while (attempts < maxRetries) {
       try {
         const res = await fetch(`${API_URL}/api/health`, {
@@ -70,7 +62,9 @@ export default function App() {
           setTimeout(() => setBackendReady(true), 500);
           return;
         }
-      } catch (err) {}
+      } catch (err) {
+        console.log('Backend sleeping, attempt:', attempts + 1);
+      }
       attempts++;
       setLoadingStatus(`Waking up servers... ${attempts}/${maxRetries}`);
       await new Promise(r => setTimeout(r, 3000));
@@ -83,10 +77,7 @@ export default function App() {
     if (!backendReady) return;
     fetchVoices(activeTab);
     fetchModes();
-    if (activeTab === 'custom') {
-      fetchVoices('realistic');
-    }
-    setChat([{type: 'bot', text: `Welcome to ${themes[activeTab].name} 👋`}]);
+    setChat([{type: 'bot', text: `Welcome to ${themes[activeTab].name} 👋 Tap a voice card below to preview`}]);
     setVoiceId('');
   }, [activeTab, backendReady]);
 
@@ -102,14 +93,10 @@ export default function App() {
 
   async function fetchVoices(type) {
     try {
-      const actualType = type === 'custom' ? 'realistic' : type;
-      const res = await fetch(`${API_URL}/api/voices/${actualType}`);
+      const res = await fetch(`${API_URL}/api/voices/${type}`);
       const data = await res.json();
       setVoices(data);
-      if (data.length > 0) {
-        setVoice(data[0].name);
-        if (type === 'custom') setCustomVoice(data[0].name);
-      }
+      if (data.length > 0) setVoice(data[0].name);
     } catch (err) {
       console.error('Fetch voices error:', err);
     }
@@ -120,10 +107,7 @@ export default function App() {
       const res = await fetch(`${API_URL}/api/modes`);
       const data = await res.json();
       setModes(data);
-      if (data.length > 0) {
-        setSelectedMode(data[0]);
-        setCustomMode(data[0]);
-      }
+      if (data.length > 0) setSelectedMode(data[0]);
     } catch (err) {
       console.error('Fetch modes error:', err);
     }
@@ -131,11 +115,9 @@ export default function App() {
 
   async function previewVoice(v) {
     setVoice(v);
-    if (activeTab === 'custom') setCustomVoice(v);
-    
     if (activeTab === 'robotic') {
       speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance('Voice preview 1 2 3');
+      const utterance = new SpeechSynthesisUtterance('Voice preview testing 1 2 3');
       const selectedVoice = getRoboticVoice(v);
       if (selectedVoice) utterance.voice = selectedVoice;
       utterance.rate = 1.1;
@@ -143,20 +125,15 @@ export default function App() {
       speechSynthesis.speak(utterance);
     } else {
       try {
-        const speed = activeTab === 'custom' ? customSpeed : 1.0;
-        const pitch = activeTab === 'custom' ? customPitch : 0;
-        const mode = activeTab === 'custom' ? customMode : selectedMode;
-        
         const res = await fetch(`${API_URL}/api/tts`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             text: 'Voice preview',
             voice: v,
-            type: activeTab === 'custom' ? 'realistic' : activeTab,
-            speed: speed,
-            pitch: pitch,
-            mode: mode
+            type: activeTab,
+            speed: 1.0,
+            mode: selectedMode
           })
         });
         const data = await res.json();
@@ -195,10 +172,13 @@ export default function App() {
     const currentText = text;
     setText('');
 
+    // Parse characters JSON if valid, else use empty object
     let charMap = {};
     try {
       charMap = JSON.parse(characters);
-    } catch (e) {}
+    } catch (e) {
+      // invalid JSON, ignore
+    }
 
     try {
       if (activeTab === 'elevenlabs') {
@@ -218,36 +198,6 @@ export default function App() {
         } else {
           setChat(prev => [...prev, {type: 'bot', text: 'Error: ' + data.error}]);
         }
-      } else if (activeTab === 'custom') {
-        const payload = {
-          text: currentText,
-          voice: customVoice || voice,
-          type: 'realistic',
-          speed: customSpeed,
-          pitch: customPitch,
-          mode: customMode,
-          characters: charMap
-        };
-        const res = await fetch(`${API_URL}/api/tts`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if(data.url) {
-          setChat(prev => [...prev, {type: 'bot', audio: `${API_URL}${data.url}`, tier: 'custom', filename: `custom_${Date.now()}.mp3`}]);
-        } else {
-          setChat(prev => [...prev, {type: 'bot', text: 'Error: ' + data.error}]);
-        }
-      } else if (activeTab === 'robotic') {
-        speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(currentText);
-        const selectedVoice = getRoboticVoice(voice);
-        if (selectedVoice) utterance.voice = selectedVoice;
-        utterance.rate = 1.1;
-        utterance.pitch = voice === 'female' ? 1.3 : 0.8;
-        speechSynthesis.speak(utterance);
-        setChat(prev => [...prev, {type: 'bot', text: `🔊 ${voice === 'female'? 'Female' : 'Male'} robotic voice played`}]);
       } else {
         const payload = {
           text: currentText,
@@ -352,7 +302,7 @@ export default function App() {
     });
   }
 
-  // --- Loading screen ---
+  // --- Loading screen (unchanged but fullscreen) ---
   if (!backendReady) {
     return (
       <div style={{
@@ -366,6 +316,7 @@ export default function App() {
         fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto',
         color: '#fff'
       }}>
+        {/* ... same as before ... */}
         <div style={{
           background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
           WebkitBackgroundClip: 'text',
@@ -399,7 +350,7 @@ export default function App() {
     );
   }
 
-  // --- Main app ---
+  // --- Main app (full screen) ---
   return (
     <div style={{
       width: '100vw',
@@ -411,7 +362,7 @@ export default function App() {
       fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto',
       overflow: 'hidden'
     }}>
-      {/* Header */}
+      {/* Header (same but full width) */}
       <div style={{
         background: themes[activeTab].bg,
         padding: '24px 20px 20px',
@@ -420,8 +371,7 @@ export default function App() {
         borderBottomRightRadius: '0',
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
         position: 'relative',
-        zIndex: 10,
-        flexShrink: 0
+        zIndex: 10
       }}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
           <div style={{fontSize: '22px', fontWeight: '800', letterSpacing: '3px'}}>H Y E Z E N</div>
@@ -472,8 +422,8 @@ export default function App() {
         <div style={{fontSize: '28px', fontWeight: '800', marginBottom: '4px', letterSpacing: '-1px'}}>{themes[activeTab].name}</div>
         <div style={{fontSize: '14px', opacity: 0.85, marginBottom: '12px'}}>{themes[activeTab].sub}</div>
 
-        {/* Mode chips for non-custom */}
-        {modes.length > 0 && activeTab !== 'custom' && (
+        {/* --- MODE SELECTION (chips) --- */}
+        {modes.length > 0 && (
           <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px'}}>
             {modes.map(m => (
               <button
@@ -497,164 +447,14 @@ export default function App() {
             ))}
           </div>
         )}
-
-        {/* --- CUSTOM MODE CONTROLS (collapsible) --- */}
-        {activeTab === 'custom' && (
-          <div style={{marginTop: '8px'}}>
-            <button
-              onClick={() => setShowCustomControls(!showCustomControls)}
-              style={{
-                background: 'rgba(255,255,255,0.15)',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '6px 14px',
-                color: '#fff',
-                fontSize: '13px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                backdropFilter: 'blur(10px)'
-              }}
-            >
-              {showCustomControls ? '▼ Hide Controls' : '▶ Show Controls'}
-              <span style={{fontSize: '10px', opacity: 0.7}}>
-                {showCustomControls ? '' : `(${customSpeed.toFixed(1)}x, ${customPitch>0?'+':''}${customPitch}%)`}
-              </span>
-            </button>
-
-            {showCustomControls && (
-              <div style={{
-                background: 'rgba(0,0,0,0.3)',
-                borderRadius: '16px',
-                padding: '16px',
-                marginTop: '10px',
-                maxHeight: '280px',
-                overflowY: 'auto'
-              }}>
-                <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
-                  {/* Speed Control */}
-                  <div>
-                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
-                      <span style={{fontSize: '13px', fontWeight: '500'}}>Speed</span>
-                      <span style={{fontSize: '13px', fontWeight: '700', color: '#fee140'}}>{customSpeed.toFixed(1)}x</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="2.0"
-                      step="0.1"
-                      value={customSpeed}
-                      onChange={e => setCustomSpeed(parseFloat(e.target.value))}
-                      style={{
-                        width: '100%',
-                        height: '4px',
-                        borderRadius: '2px',
-                        background: 'linear-gradient(90deg, #667eea, #fee140)',
-                        outline: 'none',
-                        WebkitAppearance: 'none'
-                      }}
-                    />
-                    <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.5, marginTop: '2px'}}>
-                      <span>Slow (0.5x)</span>
-                      <span>Normal (1.0x)</span>
-                      <span>Fast (2.0x)</span>
-                    </div>
-                  </div>
-
-                  {/* Pitch Control */}
-                  <div>
-                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
-                      <span style={{fontSize: '13px', fontWeight: '500'}}>Pitch</span>
-                      <span style={{fontSize: '13px', fontWeight: '700', color: '#a8edea'}}>{customPitch > 0 ? '+' : ''}{customPitch}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-50"
-                      max="50"
-                      step="1"
-                      value={customPitch}
-                      onChange={e => setCustomPitch(parseInt(e.target.value))}
-                      style={{
-                        width: '100%',
-                        height: '4px',
-                        borderRadius: '2px',
-                        background: 'linear-gradient(90deg, #667eea, #a8edea)',
-                        outline: 'none',
-                        WebkitAppearance: 'none'
-                      }}
-                    />
-                    <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.5, marginTop: '2px'}}>
-                      <span>Low (-50%)</span>
-                      <span>Normal (0%)</span>
-                      <span>High (+50%)</span>
-                    </div>
-                  </div>
-
-                  {/* Mode Selector for Custom */}
-                  <div>
-                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
-                      <span style={{fontSize: '13px', fontWeight: '500'}}>Narration Mode</span>
-                    </div>
-                    <select
-                      value={customMode}
-                      onChange={e => setCustomMode(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        background: 'rgba(255,255,255,0.1)',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        borderRadius: '10px',
-                        color: '#fff',
-                        fontSize: '13px',
-                        outline: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {modes.map(m => (
-                        <option key={m} value={m} style={{background: '#1a1a2e'}}>
-                          {m.replace('_', ' ').toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Current Settings Display */}
-                  <div style={{
-                    display: 'flex',
-                    gap: '6px',
-                    flexWrap: 'wrap',
-                    fontSize: '11px',
-                    opacity: 0.7,
-                    marginTop: '4px'
-                  }}>
-                    <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
-                      ⚡ {customSpeed.toFixed(1)}x
-                    </span>
-                    <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
-                      🎵 {customPitch > 0 ? '+' : ''}{customPitch}%
-                    </span>
-                    <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
-                      📖 {customMode.replace('_', ' ')}
-                    </span>
-                    <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
-                      🗣️ {customVoice || voice}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* --- CHAT AREA (flex:1, always visible) --- */}
+      {/* --- Chat area (flex:1) --- */}
       <div style={{
         flex: 1,
         overflowY: 'auto',
         padding: '16px 20px',
-        background: '#0a0a0f',
-        minHeight: '0' // Prevents flex overflow
+        background: '#0a0a0f'
       }}>
         {chat.map((msg, i) => (
           <div key={i} style={{
@@ -663,7 +463,7 @@ export default function App() {
             marginBottom: '12px'
           }}>
             <div style={{
-              maxWidth: '80%',
+              maxWidth: '75%',
               padding: msg.audio ? '8px' : '12px 16px',
               borderRadius: '18px',
               background: msg.type==='user' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.08)',
@@ -675,12 +475,7 @@ export default function App() {
             }}>
               {msg.audio ? (
                 <div>
-                  <audio 
-                    controls 
-                    src={msg.audio} 
-                    style={{width: '240px', borderRadius: '12px', marginBottom: '8px'}}
-                    onError={(e) => console.error('Audio load error:', e.target.src)}
-                  />
+                  <audio controls src={msg.audio} style={{width: '220px', borderRadius: '12px', marginBottom: '8px'}}></audio>
                   <div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}>
                     <button onClick={() => downloadAudio(msg.audio, msg.filename)} style={{
                       padding: '6px 12px',
@@ -700,11 +495,11 @@ export default function App() {
             </div>
           </div>
         ))}
-        {loading && <div style={{textAlign: 'center', color: '#888', fontSize: '13px', marginTop: '10px'}}>⏳ Generating voice...</div>}
+        {loading && <div style={{textAlign: 'center', color: '#888', fontSize: '13px', marginTop: '10px'}}>Generating neural voice...</div>}
         <div ref={chatEndRef} />
       </div>
 
-      {/* --- Voice cards --- */}
+      {/* --- Voice cards (if not ElevenLabs) --- */}
       {activeTab !== 'elevenlabs' && voices.length > 0 && (
         <div style={{
           padding: '0 20px 8px',
@@ -712,29 +507,24 @@ export default function App() {
           gap: '10px',
           overflowX: 'auto',
           scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-          flexShrink: 0
+          msOverflowStyle: 'none'
         }}>
-          {voices.map(v => {
-            const isSelected = activeTab === 'custom' ? customVoice === v.name : voice === v.name;
-            return (
-              <div key={v.name} onClick={() => previewVoice(v.name)}
-                style={{
-                  minWidth: '100px',
-                  padding: '8px 12px',
-                  background: isSelected ? 'rgba(102,126,234,0.3)' : 'rgba(255,255,255,0.05)',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  border: isSelected ? '2px solid #667eea' : '2px solid transparent',
-                  transition: '0.2s',
-                  backdropFilter: 'blur(10px)',
-                  flexShrink: 0
-                }}>
-                <div style={{fontSize: '12px', fontWeight: '600'}}>{v.label}</div>
-                <div style={{fontSize: '10px', opacity: 0.6, marginTop: '2px'}}>Tap to preview</div>
-              </div>
-            );
-          })}
+          {voices.map(v => (
+            <div key={v.name} onClick={() => previewVoice(v.name)}
+              style={{
+                minWidth: '120px',
+                padding: '10px 12px',
+                background: voice===v.name ? 'rgba(102,126,234,0.3)' : 'rgba(255,255,255,0.05)',
+                borderRadius: '14px',
+                cursor: 'pointer',
+                border: voice===v.name ? '2px solid #667eea' : '2px solid transparent',
+                transition: '0.2s',
+                backdropFilter: 'blur(10px)'
+              }}>
+              <div style={{fontSize: '13px', fontWeight: '600'}}>{v.label}</div>
+              <div style={{fontSize: '11px', opacity: 0.6, marginTop: '4px'}}>Tap to preview</div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -743,8 +533,7 @@ export default function App() {
         background: 'rgba(20,20,30,0.8)',
         backdropFilter: 'blur(20px)',
         padding: '12px 16px',
-        borderTop: '1px solid rgba(255,255,255,0.1)',
-        flexShrink: 0
+        borderTop: '1px solid rgba(255,255,255,0.1)'
       }}>
         {activeTab === 'elevenlabs' && !voiceId ? (
           <button
@@ -766,17 +555,19 @@ export default function App() {
               boxShadow: recording ? '0 0 40px rgba(245,87,108,0.8), inset 0 0 20px rgba(0,0,0,0.3)' : '0 6px 20px rgba(102,126,234,0.5)',
               transition: 'all 0.15s',
               transform: recording ? 'scale(0.95)' : 'scale(1)',
-              userSelect: 'none'
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
             }}>
             {recording ? '🔴 Recording... Release to stop' : '🎤 Hold to Record 10s'}
           </button>
         ) : (
           <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
             {activeTab === 'elevenlabs' && voiceId && (
-              <div style={{fontSize: '12px', color: '#0f0', paddingLeft: '4px'}}>✓ Voice Ready – Type below</div>
+              <div style={{fontSize: '12px', color: '#0f0', paddingLeft: '4px'}}>✓ Voice Ready – Type below to speak</div>
             )}
 
-            {/* Character voices input (non-robotic, non-elevenlabs) */}
+            {/* --- Character voices input (optional) --- */}
             {activeTab !== 'elevenlabs' && activeTab !== 'robotic' && (
               <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
                 <span style={{fontSize: '12px', opacity: 0.7, whiteSpace: 'nowrap'}}>Characters:</span>
@@ -786,12 +577,12 @@ export default function App() {
                   placeholder='{"hero":"Jenny", "villain":"Guy"}'
                   style={{
                     flex: 1,
-                    padding: '6px 10px',
+                    padding: '8px 12px',
                     background: 'rgba(255,255,255,0.06)',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px',
+                    borderRadius: '10px',
                     color: '#ccc',
-                    fontSize: '12px',
+                    fontSize: '13px',
                     outline: 'none',
                     fontFamily: 'monospace'
                   }}
@@ -804,10 +595,10 @@ export default function App() {
                 value={text}
                 onChange={e => setText(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && sendText()}
-                placeholder="Type text to generate voice..."
+                placeholder={activeTab === 'elevenlabs' && voiceId ? "Type text to speak in YOUR voice..." : "Type text to generate voice..."}
                 style={{
                   flex: 1,
-                  padding: '12px 16px',
+                  padding: '14px 16px',
                   background: 'rgba(255,255,255,0.08)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '14px',
@@ -819,7 +610,7 @@ export default function App() {
               />
               <button onClick={sendText}
                 style={{
-                  padding: '12px 18px',
+                  padding: '14px 18px',
                   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   border: 'none',
                   borderRadius: '14px',
