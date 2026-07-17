@@ -1,6 +1,6 @@
 // ============================================================
-//  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FIXED)
-//  Uses v7's working edge-tts approach with all v10 features
+//  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FULLY FIXED)
+//  Uses v7's working edge-tts approach with correct rate/pitch
 // ============================================================
 
 import 'dotenv/config';
@@ -436,7 +436,7 @@ const NARRATION_MODES = {
 };
 
 // ============================================================
-//  TEXT PROCESSOR (no SSML - just clean text with rate/pitch)
+//  TEXT PROCESSOR (with correct rate/pitch conversion)
 // ============================================================
 function processText({
   text,
@@ -483,7 +483,19 @@ function processText({
   const finalSpeed = speed * (1 + (emotionProsody.rate / 100)) * (modeSettings.speed / 1.0);
   const finalPitch = pitch + emotionProsody.pitch + (modeSettings.pitch || 0);
 
-  return { text: processed, lang, emotion, finalSpeed, finalPitch };
+  // Convert to edge-tts format
+  // Rate: percentage string like "+0%" or "-15%"
+  const rateValue = Math.round((finalSpeed - 1) * 100);
+  const rateStr = rateValue !== 0 ? `${rateValue > 0 ? '+' : ''}${rateValue}%` : '';
+  
+  // Pitch: Hz string like "+5Hz" or "-10Hz"
+  // Edge-tts expects pitch in Hz, not percentage!
+  const pitchValue = Math.round(finalPitch * 2); // Convert percentage to Hz
+  const pitchStr = pitchValue !== 0 ? `${pitchValue > 0 ? '+' : ''}${pitchValue}Hz` : '';
+
+  console.log(`📊 Speed: ${finalSpeed.toFixed(2)}x (${rateStr}), Pitch: ${finalPitch}% (${pitchStr})`);
+
+  return { text: processed, lang, emotion, finalSpeed, finalPitch, rateStr, pitchStr };
 }
 
 // ============================================================
@@ -506,7 +518,8 @@ function edgeTTS(voice, text, outputFile, rate = '', pitch = '') {
     }
     
     console.log(`🔊 Generating: ${path.basename(outputFile)}`);
-    console.log(`📝 Text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+    console.log(`📝 Text length: ${text.length} chars`);
+    console.log(`⚡ Rate: ${rate || 'default'}, Pitch: ${pitch || 'default'}`);
     
     exec(cmd, (error, stdout, stderr) => {
       if (error) {
@@ -635,7 +648,7 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
 });
 
 // ============================================================
-//  MAIN TTS ENDPOINT (USING V7's WORKING APPROACH)
+//  MAIN TTS ENDPOINT (FIXED rate/pitch format)
 // ============================================================
 app.post('/api/tts', async (req, res) => {
   try {
@@ -676,28 +689,20 @@ app.post('/api/tts', async (req, res) => {
       });
     }
 
-    // Process text (no SSML)
-    const { text: processedText, lang, emotion: detectedEmotion, finalSpeed, finalPitch } = processText({
+    // Process text and get rate/pitch strings
+    const { text: processedText, lang, emotion: detectedEmotion, rateStr, pitchStr } = processText({
       text, voice, speed, pitch, mode, emotion, characterMap: characters, userPronunciation: user_pronunciation,
     });
-
-    // Calculate rate and pitch for edge-tts
-    const rateValue = Math.round((finalSpeed - 1) * 100);
-    const pitchValue = Math.round(finalPitch);
-    
-    const rate = rateValue !== 0 ? `${rateValue > 0 ? '+' : ''}${rateValue}%` : '';
-    const pitchStr = pitchValue !== 0 ? `${pitchValue > 0 ? '+' : ''}${pitchValue}%` : '';
 
     // Generate audio
     const filename = `${type}_${uuidv4()}.mp3`;
     const filepath = path.join(__dirname, 'audio', filename);
-    await edgeTTS(voice, processedText, filepath, rate, pitchStr);
+    await edgeTTS(voice, processedText, filepath, rateStr, pitchStr);
 
     // Metadata
     const size = fs.statSync(filepath).size;
     let duration = 0;
     try {
-      // Try to get duration from ffprobe if ffmpeg is available
       const { exec: execFF } = await import('child_process');
       const ffprobeCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filepath}"`;
       await new Promise((resolve) => {
@@ -723,6 +728,8 @@ app.post('/api/tts', async (req, res) => {
       size,
       format: 'mp3',
       emotion: detectedEmotion,
+      rate: rateStr || 'default',
+      pitch: pitchStr || 'default',
     });
   } catch (e) {
     console.error('TTS error:', e);
@@ -748,5 +755,6 @@ app.listen(PORT, () => {
   console.log(`🚀 HYEZEN TTS v10 running on port ${PORT}`);
   console.log(`✅ Realistic: ${REALISTIC_VOICES.length} voices, Fair: ${FAIR_VOICES.length}`);
   console.log('✅ Modes:', Object.keys(NARRATION_MODES).join(', '));
-  console.log('✅ Using v7 edge-tts approach - no SSML issues!');
+  console.log('✅ Using v7 edge-tts approach with correct rate/pitch format');
+  console.log('✅ Pitch uses Hz format (+5Hz, -10Hz) not percentage');
 });
