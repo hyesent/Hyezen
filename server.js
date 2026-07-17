@@ -1,7 +1,8 @@
 // ============================================================
 //  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FIXED)
 //  No rate limiting, hardcoded voices, all features.
-//  Concurrency handled via a simple queue (optional).
+//  Concurrency handled via a simple queue.
+//  Custom sentence splitter (no external dependency).
 // ============================================================
 
 import 'dotenv/config';
@@ -16,7 +17,7 @@ import FormData from 'form-data';
 import { v4 as uuidv4 } from 'uuid';
 import { franc } from 'franc';
 import { toWords } from 'number-to-words';
-import splitter from 'sentence-splitter';  // ← FIXED: changed import
+// sentence-splitter REMOVED – using custom function below
 import crypto from 'crypto';
 
 // Optional ffmpeg for audio mastering
@@ -50,6 +51,15 @@ app.use('/cache', express.static(path.join(__dirname, 'cache')));
 ['audio', 'cache'].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 });
+
+// ============================================================
+//  CUSTOM SENTENCE SPLITTER (replaces sentence-splitter)
+// ============================================================
+function getSentences(text) {
+  // Split by sentence-ending punctuation (. ! ?) followed by space or end
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  return sentences.map(s => s.trim()).filter(s => s.length > 0);
+}
 
 // ============================================================
 //  HARDCODED VOICE LISTS (FULL)
@@ -500,8 +510,8 @@ async function buildSSMLFull({
   // Character voices
   processed = applyCharacterVoices(processed, characterMap);
 
-  // Split sentences - FIXED: using splitter.default or splitter.splitIntoSentences
-  const sentences = splitter.splitIntoSentences(processed).map(item => item.raw).filter(s => s.trim().length > 0);
+  // Split sentences - USING CUSTOM FUNCTION (no external dependency)
+  const sentences = getSentences(processed);
 
   // Apply mode
   const modeSettings = NARRATION_MODES[mode] || NARRATION_MODES.story;
