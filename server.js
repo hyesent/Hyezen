@@ -1,6 +1,6 @@
 // ============================================================
 //  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FULLY FIXED)
-//  With Custom Mode Support - Full control over speed, pitch & voice
+//  Uses v7's working edge-tts approach with correct rate/pitch
 // ============================================================
 
 import 'dotenv/config';
@@ -436,7 +436,7 @@ const NARRATION_MODES = {
 };
 
 // ============================================================
-//  TEXT PROCESSOR (with custom mode support)
+//  TEXT PROCESSOR (with correct rate/pitch conversion)
 // ============================================================
 function processText({
   text,
@@ -475,14 +475,11 @@ function processText({
   if (!emotion) emotion = detectEmotion(processed);
   const emotionProsody = getEmotionProsody(emotion);
 
-  // Character voices
+  // Character voices (simplified - just add markers)
   processed = applyCharacterVoices(processed, characterMap);
 
-  // Apply mode settings
+  // Apply mode
   const modeSettings = NARRATION_MODES[mode] || NARRATION_MODES.story;
-  
-  // Calculate final speed and pitch
-  // User speed * emotion rate * mode speed
   const finalSpeed = speed * (1 + (emotionProsody.rate / 100)) * (modeSettings.speed / 1.0);
   const finalPitch = pitch + emotionProsody.pitch + (modeSettings.pitch || 0);
 
@@ -492,33 +489,24 @@ function processText({
   const rateStr = rateValue !== 0 ? `${rateValue > 0 ? '+' : ''}${rateValue}%` : '';
   
   // Pitch: Hz string like "+5Hz" or "-10Hz"
-  // Edge-tts expects pitch in Hz, not percentage
+  // Edge-tts expects pitch in Hz, not percentage!
   const pitchValue = Math.round(finalPitch * 2); // Convert percentage to Hz
   const pitchStr = pitchValue !== 0 ? `${pitchValue > 0 ? '+' : ''}${pitchValue}Hz` : '';
 
-  console.log(`📊 Custom Settings - Speed: ${finalSpeed.toFixed(2)}x (${rateStr}), Pitch: ${finalPitch}% (${pitchStr}), Mode: ${mode}`);
+  console.log(`📊 Speed: ${finalSpeed.toFixed(2)}x (${rateStr}), Pitch: ${finalPitch}% (${pitchStr})`);
 
-  return { 
-    text: processed, 
-    lang, 
-    emotion, 
-    finalSpeed, 
-    finalPitch, 
-    rateStr, 
-    pitchStr,
-    modeSettings 
-  };
+  return { text: processed, lang, emotion, finalSpeed, finalPitch, rateStr, pitchStr };
 }
 
 // ============================================================
-//  EDGE-TTS WRAPPER
+//  EDGE-TTS WRAPPER (USING V7's WORKING APPROACH)
 // ============================================================
 function edgeTTS(voice, text, outputFile, rate = '', pitch = '') {
   return new Promise((resolve, reject) => {
     // Escape double quotes in text
     const escapedText = text.replace(/"/g, '\\"');
     
-    // Build command using python3 -m edge_tts
+    // Build command using python3 -m edge_tts (v7 approach)
     let cmd = `python3 -m edge_tts --voice "${voice}" --text "${escapedText}" --write-media "${outputFile}"`;
     
     if (rate) {
@@ -660,33 +648,12 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
 });
 
 // ============================================================
-//  MAIN TTS ENDPOINT (with full custom mode support)
+//  MAIN TTS ENDPOINT (FIXED rate/pitch format)
 // ============================================================
 app.post('/api/tts', async (req, res) => {
   try {
-    let { 
-      text, 
-      voice, 
-      type = 'realistic', 
-      speed = 1.0, 
-      pitch = 0, 
-      mode = 'story', 
-      emotion, 
-      characters, 
-      user_pronunciation 
-    } = req.body;
-    
+    let { text, voice, type = 'realistic', speed = 1.0, pitch = 0, mode = 'story', emotion, characters, user_pronunciation } = req.body;
     if (!text) return res.status(400).json({ error: 'Text required' });
-
-    // Validate speed range
-    if (speed < 0.5 || speed > 2.0) {
-      return res.status(400).json({ error: 'Speed must be between 0.5 and 2.0' });
-    }
-    
-    // Validate pitch range
-    if (pitch < -50 || pitch > 50) {
-      return res.status(400).json({ error: 'Pitch must be between -50 and 50' });
-    }
 
     if (type === 'robotic') return res.json({ success: true, robotic: true, text, voice });
     if (type === 'xtts') return res.status(400).json({ error: 'XTTS not in this route, use /api/elevenlabs/tts' });
@@ -706,7 +673,7 @@ app.post('/api/tts', async (req, res) => {
       voice = fallback;
     }
 
-    // Check cache (include all parameters in cache key)
+    // Check cache
     const cacheEntry = getCacheEntry(text, voice, speed, pitch, mode, 'mp3');
     if (cacheEntry) {
       return res.json({
@@ -719,36 +686,12 @@ app.post('/api/tts', async (req, res) => {
         size: cacheEntry.size,
         format: 'mp3',
         emotion: cacheEntry.emotion || 'unknown',
-        speed: speed,
-        pitch: pitch,
-        mode: mode
       });
     }
 
-    // Parse character map
-    let charMap = {};
-    try {
-      if (characters) charMap = typeof characters === 'string' ? JSON.parse(characters) : characters;
-    } catch (e) {
-      console.warn('Invalid character map:', e);
-    }
-
-    // Process text with custom settings
-    const { 
-      text: processedText, 
-      lang, 
-      emotion: detectedEmotion, 
-      rateStr, 
-      pitchStr 
-    } = processText({
-      text, 
-      voice, 
-      speed, 
-      pitch, 
-      mode, 
-      emotion, 
-      characterMap: charMap, 
-      userPronunciation: user_pronunciation,
+    // Process text and get rate/pitch strings
+    const { text: processedText, lang, emotion: detectedEmotion, rateStr, pitchStr } = processText({
+      text, voice, speed, pitch, mode, emotion, characterMap: characters, userPronunciation: user_pronunciation,
     });
 
     // Generate audio
@@ -785,64 +728,13 @@ app.post('/api/tts', async (req, res) => {
       size,
       format: 'mp3',
       emotion: detectedEmotion,
-      speed: speed,
-      pitch: pitch,
-      mode: mode,
       rate: rateStr || 'default',
-      pitch_hz: pitchStr || 'default'
+      pitch: pitchStr || 'default',
     });
   } catch (e) {
     console.error('TTS error:', e);
     res.status(500).json({ error: e.message });
   }
-});
-
-// Custom TTS endpoint for even more control
-app.post('/api/tts/custom', async (req, res) => {
-  try {
-    const { 
-      text, 
-      voice, 
-      speed = 1.0, 
-      pitch = 0, 
-      mode = 'story',
-      emotion,
-      characters,
-      user_pronunciation,
-      volume = 1.0,
-      style = 'general'
-    } = req.body;
-    
-    // Forward to main TTS with all parameters
-    req.body.type = 'realistic';
-    return app._router.handle(req, res);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Get current settings/limits
-app.get('/api/settings', (req, res) => {
-  res.json({
-    speed: {
-      min: 0.5,
-      max: 2.0,
-      default: 1.0,
-      step: 0.1
-    },
-    pitch: {
-      min: -50,
-      max: 50,
-      default: 0,
-      step: 1,
-      description: 'Percentage converted to Hz internally'
-    },
-    modes: Object.keys(NARRATION_MODES),
-    voiceCount: {
-      realistic: REALISTIC_VOICES.length,
-      fair: FAIR_VOICES.length
-    }
-  });
 });
 
 app.get('/api/health', (req, res) => {
@@ -853,7 +745,6 @@ app.get('/api/health', (req, res) => {
     realisticCount: REALISTIC_VOICES.length,
     fairCount: FAIR_VOICES.length,
     cacheEntries: db.entries.length,
-    modes: Object.keys(NARRATION_MODES)
   });
 });
 
@@ -864,7 +755,6 @@ app.listen(PORT, () => {
   console.log(`🚀 HYEZEN TTS v10 running on port ${PORT}`);
   console.log(`✅ Realistic: ${REALISTIC_VOICES.length} voices, Fair: ${FAIR_VOICES.length}`);
   console.log('✅ Modes:', Object.keys(NARRATION_MODES).join(', '));
-  console.log('✅ Custom mode support: Speed (0.5-2.0), Pitch (-50 to +50)');
   console.log('✅ Using v7 edge-tts approach with correct rate/pitch format');
   console.log('✅ Pitch uses Hz format (+5Hz, -10Hz) not percentage');
 });
