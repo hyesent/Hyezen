@@ -1,14 +1,12 @@
 // ============================================================
-//  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FULLY FIXED)
-//  No rate limiting, hardcoded voices, all features.
-//  Concurrency handled via a simple queue.
-//  Custom sentence splitter (no external dependency).
+//  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FIXED)
+//  Uses v7's working edge-tts approach with all v10 features
 // ============================================================
 
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { execFile } from 'child_process';
+import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -16,23 +14,9 @@ import fetch from 'node-fetch';
 import FormData from 'form-data';
 import { v4 as uuidv4 } from 'uuid';
 import { franc } from 'franc';
-// FIX: number-to-words is CommonJS - import as default
 import pkg from 'number-to-words';
 const { toWords } = pkg;
 import crypto from 'crypto';
-
-// Optional ffmpeg for audio mastering
-let ffmpeg, ffmpegPath;
-try {
-  const ffmpegModule = await import('fluent-ffmpeg');
-  ffmpeg = ffmpegModule.default;
-  const ffmpegStatic = await import('ffmpeg-static');
-  ffmpegPath = ffmpegStatic.default;
-  ffmpeg.setFfmpegPath(ffmpegPath);
-  console.log('✅ ffmpeg loaded – audio mastering enabled');
-} catch (e) {
-  console.warn('⚠️ ffmpeg not installed – audio mastering disabled');
-}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,140 +38,131 @@ app.use('/cache', express.static(path.join(__dirname, 'cache')));
 });
 
 // ============================================================
-//  CUSTOM SENTENCE SPLITTER (replaces sentence-splitter)
+//  CUSTOM SENTENCE SPLITTER
 // ============================================================
 function getSentences(text) {
-  // Split by sentence-ending punctuation (. ! ?) followed by space or end
   const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
   return sentences.map(s => s.trim()).filter(s => s.length > 0);
 }
 
 // ============================================================
-//  HARDCODED VOICE LISTS (FULL)
+//  HARDCODED VOICE LISTS
 // ============================================================
 
-// ----- REALISTIC – 108 premium voices (global) -----
+// ----- REALISTIC – 108 premium voices -----
 const REALISTIC_VOICES = [
-  // North America (US, Canada)
-  { name: 'en-US-JennyNeural', label: 'Jenny (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-AriaNeural', label: 'Aria (US)', locale: 'en-US', quality: 'premium', style: 'assistant' },
-  { name: 'en-US-MichelleNeural', label: 'Michelle (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-SaraNeural', label: 'Sara (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-AshleyNeural', label: 'Ashley (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-AnaNeural', label: 'Ana (US)', locale: 'en-US', quality: 'premium', style: 'assistant' },
-  { name: 'en-US-GuyNeural', label: 'Guy (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-BrandonNeural', label: 'Brandon (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-ChristopherNeural', label: 'Christopher (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-EricNeural', label: 'Eric (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-SteffanNeural', label: 'Steffan (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-US-RogerNeural', label: 'Roger (US)', locale: 'en-US', quality: 'premium', style: 'narrator' },
-  { name: 'en-CA-ClaraNeural', label: 'Clara (Canada)', locale: 'en-CA', quality: 'good', style: 'narrator' },
-  { name: 'en-CA-LiamNeural', label: 'Liam (Canada)', locale: 'en-CA', quality: 'good', style: 'narrator' },
-  { name: 'en-CA-EmmaNeural', label: 'Emma (Canada)', locale: 'en-CA', quality: 'good', style: 'narrator' },
-  { name: 'en-CA-BrentNeural', label: 'Brent (Canada)', locale: 'en-CA', quality: 'good', style: 'narrator' },
-  // Europe (UK, Ireland, France, Germany, Spain, Italy, Portugal, Netherlands, etc.)
-  { name: 'en-GB-SoniaNeural', label: 'Sonia (UK)', locale: 'en-GB', quality: 'premium', style: 'narrator' },
-  { name: 'en-GB-RyanNeural', label: 'Ryan (UK)', locale: 'en-GB', quality: 'premium', style: 'narrator' },
-  { name: 'en-GB-LibbyNeural', label: 'Libby (UK)', locale: 'en-GB', quality: 'premium', style: 'narrator' },
-  { name: 'en-GB-MaisieNeural', label: 'Maisie (UK)', locale: 'en-GB', quality: 'premium', style: 'narrator' },
-  { name: 'en-GB-AbbiNeural', label: 'Abbi (UK)', locale: 'en-GB', quality: 'premium', style: 'narrator' },
-  { name: 'en-GB-AlfieNeural', label: 'Alfie (UK)', locale: 'en-GB', quality: 'premium', style: 'narrator' },
-  { name: 'en-GB-ElliotNeural', label: 'Elliot (UK)', locale: 'en-GB', quality: 'premium', style: 'narrator' },
-  { name: 'en-GB-EthanNeural', label: 'Ethan (UK)', locale: 'en-GB', quality: 'premium', style: 'narrator' },
-  { name: 'en-IE-EmilyNeural', label: 'Emily (Ireland)', locale: 'en-IE', quality: 'good', style: 'narrator' },
-  { name: 'en-IE-ConorNeural', label: 'Conor (Ireland)', locale: 'en-IE', quality: 'good', style: 'narrator' },
-  { name: 'fr-FR-DeniseNeural', label: 'Denise (France)', locale: 'fr-FR', quality: 'premium', style: 'narrator' },
-  { name: 'fr-FR-HenriNeural', label: 'Henri (France)', locale: 'fr-FR', quality: 'premium', style: 'narrator' },
-  { name: 'de-DE-KatjaNeural', label: 'Katja (Germany)', locale: 'de-DE', quality: 'premium', style: 'narrator' },
-  { name: 'de-DE-ConradNeural', label: 'Conrad (Germany)', locale: 'de-DE', quality: 'premium', style: 'narrator' },
-  { name: 'es-ES-ElviraNeural', label: 'Elvira (Spain)', locale: 'es-ES', quality: 'premium', style: 'narrator' },
-  { name: 'es-ES-AlvaroNeural', label: 'Alvaro (Spain)', locale: 'es-ES', quality: 'premium', style: 'narrator' },
-  { name: 'it-IT-ElsaNeural', label: 'Elsa (Italy)', locale: 'it-IT', quality: 'premium', style: 'narrator' },
-  { name: 'it-IT-DiegoNeural', label: 'Diego (Italy)', locale: 'it-IT', quality: 'premium', style: 'narrator' },
-  { name: 'pt-PT-RaquelNeural', label: 'Raquel (Portugal)', locale: 'pt-PT', quality: 'good', style: 'narrator' },
-  { name: 'ru-RU-SvetlanaNeural', label: 'Svetlana (Russia)', locale: 'ru-RU', quality: 'good', style: 'narrator' },
-  { name: 'nl-NL-FennaNeural', label: 'Fenna (Netherlands)', locale: 'nl-NL', quality: 'good', style: 'narrator' },
-  { name: 'nl-NL-MaartenNeural', label: 'Maarten (Netherlands)', locale: 'nl-NL', quality: 'good', style: 'narrator' },
-  { name: 'pl-PL-ZofiaNeural', label: 'Zofia (Poland)', locale: 'pl-PL', quality: 'good', style: 'narrator' },
-  { name: 'pl-PL-MarekNeural', label: 'Marek (Poland)', locale: 'pl-PL', quality: 'good', style: 'narrator' },
-  { name: 'da-DK-ChristelNeural', label: 'Christel (Denmark)', locale: 'da-DK', quality: 'good', style: 'narrator' },
-  { name: 'da-DK-JeppeNeural', label: 'Jeppe (Denmark)', locale: 'da-DK', quality: 'good', style: 'narrator' },
-  { name: 'sv-SE-SofieNeural', label: 'Sofie (Sweden)', locale: 'sv-SE', quality: 'good', style: 'narrator' },
-  { name: 'sv-SE-MattiasNeural', label: 'Mattias (Sweden)', locale: 'sv-SE', quality: 'good', style: 'narrator' },
-  { name: 'nb-NO-IselinNeural', label: 'Iselin (Norway)', locale: 'nb-NO', quality: 'good', style: 'narrator' },
-  { name: 'nb-NO-FinnNeural', label: 'Finn (Norway)', locale: 'nb-NO', quality: 'good', style: 'narrator' },
-  { name: 'fi-FI-NooraNeural', label: 'Noora (Finland)', locale: 'fi-FI', quality: 'good', style: 'narrator' },
-  { name: 'fi-FI-HarriNeural', label: 'Harri (Finland)', locale: 'fi-FI', quality: 'good', style: 'narrator' },
-  // Asia (India, Singapore, Philippines, HK, China, Japan, Korea, Saudi)
-  { name: 'en-IN-NeerjaNeural', label: 'Neerja (India)', locale: 'en-IN', quality: 'good', style: 'narrator' },
-  { name: 'en-IN-PrabhatNeural', label: 'Prabhat (India)', locale: 'en-IN', quality: 'good', style: 'narrator' },
-  { name: 'en-IN-AnanyaNeural', label: 'Ananya (India)', locale: 'en-IN', quality: 'good', style: 'narrator' },
-  { name: 'en-IN-ManishNeural', label: 'Manish (India)', locale: 'en-IN', quality: 'good', style: 'narrator' },
-  { name: 'en-SG-LunaNeural', label: 'Luna (Singapore)', locale: 'en-SG', quality: 'good', style: 'narrator' },
-  { name: 'en-SG-WayneNeural', label: 'Wayne (Singapore)', locale: 'en-SG', quality: 'good', style: 'narrator' },
-  { name: 'en-PH-RosaNeural', label: 'Rosa (Philippines)', locale: 'en-PH', quality: 'good', style: 'narrator' },
-  { name: 'en-PH-JamesNeural', label: 'James (Philippines)', locale: 'en-PH', quality: 'good', style: 'narrator' },
-  { name: 'en-HK-SamNeural', label: 'Sam (Hong Kong)', locale: 'en-HK', quality: 'good', style: 'narrator' },
-  { name: 'en-HK-YanNeural', label: 'Yan (Hong Kong)', locale: 'en-HK', quality: 'good', style: 'narrator' },
-  { name: 'zh-CN-XiaoxiaoNeural', label: 'Xiaoxiao (China)', locale: 'zh-CN', quality: 'premium', style: 'assistant' },
-  { name: 'zh-CN-YunxiNeural', label: 'Yunxi (China)', locale: 'zh-CN', quality: 'premium', style: 'narrator' },
-  { name: 'ja-JP-NanamiNeural', label: 'Nanami (Japan)', locale: 'ja-JP', quality: 'premium', style: 'narrator' },
-  { name: 'ja-JP-KeitaNeural', label: 'Keita (Japan)', locale: 'ja-JP', quality: 'premium', style: 'narrator' },
-  { name: 'ko-KR-SunHiNeural', label: 'SunHi (Korea)', locale: 'ko-KR', quality: 'premium', style: 'narrator' },
-  { name: 'ar-SA-ZariyahNeural', label: 'Zariyah (Saudi)', locale: 'ar-SA', quality: 'good', style: 'narrator' },
-  // Africa (Nigeria, Kenya, South Africa, Tanzania, Egypt)
-  { name: 'en-NG-AbeoNeural', label: 'Abeo (Nigeria)', locale: 'en-NG', quality: 'good', style: 'narrator' },
-  { name: 'en-NG-EzinneNeural', label: 'Ezinne (Nigeria)', locale: 'en-NG', quality: 'good', style: 'narrator' },
-  { name: 'en-KE-AsiliaNeural', label: 'Asilia (Kenya)', locale: 'en-KE', quality: 'good', style: 'narrator' },
-  { name: 'en-KE-ChilembaNeural', label: 'Chilemba (Kenya)', locale: 'en-KE', quality: 'good', style: 'narrator' },
-  { name: 'en-ZA-LeahNeural', label: 'Leah (South Africa)', locale: 'en-ZA', quality: 'good', style: 'narrator' },
-  { name: 'en-ZA-LukeNeural', label: 'Luke (South Africa)', locale: 'en-ZA', quality: 'good', style: 'narrator' },
-  { name: 'en-TZ-ElimuNeural', label: 'Elimu (Tanzania)', locale: 'en-TZ', quality: 'good', style: 'narrator' },
-  { name: 'ar-EG-ShakirNeural', label: 'Shakir (Egypt)', locale: 'ar-EG', quality: 'good', style: 'narrator' },
-  // Oceania (Australia, New Zealand)
-  { name: 'en-AU-NatashaNeural', label: 'Natasha (Australia)', locale: 'en-AU', quality: 'good', style: 'narrator' },
-  { name: 'en-AU-WilliamNeural', label: 'William (Australia)', locale: 'en-AU', quality: 'good', style: 'narrator' },
-  { name: 'en-AU-AnnetteNeural', label: 'Annette (Australia)', locale: 'en-AU', quality: 'good', style: 'narrator' },
-  { name: 'en-AU-KenNeural', label: 'Ken (Australia)', locale: 'en-AU', quality: 'good', style: 'narrator' },
-  { name: 'en-NZ-MitchellNeural', label: 'Mitchell (New Zealand)', locale: 'en-NZ', quality: 'good', style: 'narrator' },
-  { name: 'en-NZ-MollyNeural', label: 'Molly (New Zealand)', locale: 'en-NZ', quality: 'good', style: 'narrator' },
-  // South America (Brazil, Mexico, Argentina)
-  { name: 'pt-BR-FranciscaNeural', label: 'Francisca (Brazil)', locale: 'pt-BR', quality: 'good', style: 'narrator' },
-  { name: 'pt-BR-AntonioNeural', label: 'Antonio (Brazil)', locale: 'pt-BR', quality: 'good', style: 'narrator' },
-  { name: 'es-MX-DaliaNeural', label: 'Dalia (Mexico)', locale: 'es-MX', quality: 'good', style: 'narrator' },
-  { name: 'es-AR-ElenaNeural', label: 'Elena (Argentina)', locale: 'es-AR', quality: 'good', style: 'narrator' },
-  // Additional languages
-  { name: 'tr-TR-EmelNeural', label: 'Emel (Turkey)', locale: 'tr-TR', quality: 'good', style: 'narrator' },
-  { name: 'tr-TR-AhmetNeural', label: 'Ahmet (Turkey)', locale: 'tr-TR', quality: 'good', style: 'narrator' },
-  { name: 'he-IL-HilaNeural', label: 'Hila (Israel)', locale: 'he-IL', quality: 'good', style: 'narrator' },
-  { name: 'he-IL-AvriNeural', label: 'Avri (Israel)', locale: 'he-IL', quality: 'good', style: 'narrator' },
-  { name: 'id-ID-GadisNeural', label: 'Gadis (Indonesia)', locale: 'id-ID', quality: 'good', style: 'narrator' },
-  { name: 'id-ID-ArdiNeural', label: 'Ardi (Indonesia)', locale: 'id-ID', quality: 'good', style: 'narrator' },
-  { name: 'ms-MY-YasminNeural', label: 'Yasmin (Malaysia)', locale: 'ms-MY', quality: 'good', style: 'narrator' },
-  { name: 'ms-MY-OsmanNeural', label: 'Osman (Malaysia)', locale: 'ms-MY', quality: 'good', style: 'narrator' },
-  { name: 'vi-VN-HoaiMyNeural', label: 'Hoai My (Vietnam)', locale: 'vi-VN', quality: 'good', style: 'narrator' },
-  { name: 'vi-VN-NamMinhNeural', label: 'Nam Minh (Vietnam)', locale: 'vi-VN', quality: 'good', style: 'narrator' },
-  { name: 'th-TH-PremwadeeNeural', label: 'Premwadee (Thailand)', locale: 'th-TH', quality: 'good', style: 'narrator' },
-  { name: 'th-TH-NiwatNeural', label: 'Niwat (Thailand)', locale: 'th-TH', quality: 'good', style: 'narrator' },
-  { name: 'cs-CZ-VlastaNeural', label: 'Vlasta (Czech)', locale: 'cs-CZ', quality: 'good', style: 'narrator' },
-  { name: 'cs-CZ-AntoninNeural', label: 'Antonin (Czech)', locale: 'cs-CZ', quality: 'good', style: 'narrator' },
-  { name: 'hu-HU-NoemiNeural', label: 'Noemi (Hungary)', locale: 'hu-HU', quality: 'good', style: 'narrator' },
-  { name: 'hu-HU-TamasNeural', label: 'Tamas (Hungary)', locale: 'hu-HU', quality: 'good', style: 'narrator' },
-  { name: 'el-GR-AthinaNeural', label: 'Athina (Greece)', locale: 'el-GR', quality: 'good', style: 'narrator' },
-  { name: 'el-GR-NestorasNeural', label: 'Nestoras (Greece)', locale: 'el-GR', quality: 'good', style: 'narrator' },
-  { name: 'ro-RO-AlinaNeural', label: 'Alina (Romania)', locale: 'ro-RO', quality: 'good', style: 'narrator' },
-  { name: 'ro-RO-EmilNeural', label: 'Emil (Romania)', locale: 'ro-RO', quality: 'good', style: 'narrator' },
-  { name: 'sk-SK-ViktoriaNeural', label: 'Viktoria (Slovakia)', locale: 'sk-SK', quality: 'good', style: 'narrator' },
-  { name: 'sk-SK-LukasNeural', label: 'Lukas (Slovakia)', locale: 'sk-SK', quality: 'good', style: 'narrator' },
-  { name: 'sl-SI-PetraNeural', label: 'Petra (Slovenia)', locale: 'sl-SI', quality: 'good', style: 'narrator' },
-  { name: 'sl-SI-RokNeural', label: 'Rok (Slovenia)', locale: 'sl-SI', quality: 'good', style: 'narrator' },
-  { name: 'hr-HR-GabrijelaNeural', label: 'Gabrijela (Croatia)', locale: 'hr-HR', quality: 'good', style: 'narrator' },
-  { name: 'hr-HR-SreckoNeural', label: 'Srecko (Croatia)', locale: 'hr-HR', quality: 'good', style: 'narrator' },
+  { name: 'en-US-JennyNeural', label: 'Jenny (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-AriaNeural', label: 'Aria (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-MichelleNeural', label: 'Michelle (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-SaraNeural', label: 'Sara (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-AshleyNeural', label: 'Ashley (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-AnaNeural', label: 'Ana (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-GuyNeural', label: 'Guy (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-BrandonNeural', label: 'Brandon (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-ChristopherNeural', label: 'Christopher (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-EricNeural', label: 'Eric (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-SteffanNeural', label: 'Steffan (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-US-RogerNeural', label: 'Roger (US)', locale: 'en-US', quality: 'premium' },
+  { name: 'en-CA-ClaraNeural', label: 'Clara (Canada)', locale: 'en-CA', quality: 'good' },
+  { name: 'en-CA-LiamNeural', label: 'Liam (Canada)', locale: 'en-CA', quality: 'good' },
+  { name: 'en-CA-EmmaNeural', label: 'Emma (Canada)', locale: 'en-CA', quality: 'good' },
+  { name: 'en-CA-BrentNeural', label: 'Brent (Canada)', locale: 'en-CA', quality: 'good' },
+  { name: 'en-GB-SoniaNeural', label: 'Sonia (UK)', locale: 'en-GB', quality: 'premium' },
+  { name: 'en-GB-RyanNeural', label: 'Ryan (UK)', locale: 'en-GB', quality: 'premium' },
+  { name: 'en-GB-LibbyNeural', label: 'Libby (UK)', locale: 'en-GB', quality: 'premium' },
+  { name: 'en-GB-MaisieNeural', label: 'Maisie (UK)', locale: 'en-GB', quality: 'premium' },
+  { name: 'en-GB-AbbiNeural', label: 'Abbi (UK)', locale: 'en-GB', quality: 'premium' },
+  { name: 'en-GB-AlfieNeural', label: 'Alfie (UK)', locale: 'en-GB', quality: 'premium' },
+  { name: 'en-GB-ElliotNeural', label: 'Elliot (UK)', locale: 'en-GB', quality: 'premium' },
+  { name: 'en-GB-EthanNeural', label: 'Ethan (UK)', locale: 'en-GB', quality: 'premium' },
+  { name: 'en-IE-EmilyNeural', label: 'Emily (Ireland)', locale: 'en-IE', quality: 'good' },
+  { name: 'en-IE-ConorNeural', label: 'Conor (Ireland)', locale: 'en-IE', quality: 'good' },
+  { name: 'fr-FR-DeniseNeural', label: 'Denise (France)', locale: 'fr-FR', quality: 'premium' },
+  { name: 'fr-FR-HenriNeural', label: 'Henri (France)', locale: 'fr-FR', quality: 'premium' },
+  { name: 'de-DE-KatjaNeural', label: 'Katja (Germany)', locale: 'de-DE', quality: 'premium' },
+  { name: 'de-DE-ConradNeural', label: 'Conrad (Germany)', locale: 'de-DE', quality: 'premium' },
+  { name: 'es-ES-ElviraNeural', label: 'Elvira (Spain)', locale: 'es-ES', quality: 'premium' },
+  { name: 'es-ES-AlvaroNeural', label: 'Alvaro (Spain)', locale: 'es-ES', quality: 'premium' },
+  { name: 'it-IT-ElsaNeural', label: 'Elsa (Italy)', locale: 'it-IT', quality: 'premium' },
+  { name: 'it-IT-DiegoNeural', label: 'Diego (Italy)', locale: 'it-IT', quality: 'premium' },
+  { name: 'pt-PT-RaquelNeural', label: 'Raquel (Portugal)', locale: 'pt-PT', quality: 'good' },
+  { name: 'ru-RU-SvetlanaNeural', label: 'Svetlana (Russia)', locale: 'ru-RU', quality: 'good' },
+  { name: 'nl-NL-FennaNeural', label: 'Fenna (Netherlands)', locale: 'nl-NL', quality: 'good' },
+  { name: 'nl-NL-MaartenNeural', label: 'Maarten (Netherlands)', locale: 'nl-NL', quality: 'good' },
+  { name: 'pl-PL-ZofiaNeural', label: 'Zofia (Poland)', locale: 'pl-PL', quality: 'good' },
+  { name: 'pl-PL-MarekNeural', label: 'Marek (Poland)', locale: 'pl-PL', quality: 'good' },
+  { name: 'da-DK-ChristelNeural', label: 'Christel (Denmark)', locale: 'da-DK', quality: 'good' },
+  { name: 'da-DK-JeppeNeural', label: 'Jeppe (Denmark)', locale: 'da-DK', quality: 'good' },
+  { name: 'sv-SE-SofieNeural', label: 'Sofie (Sweden)', locale: 'sv-SE', quality: 'good' },
+  { name: 'sv-SE-MattiasNeural', label: 'Mattias (Sweden)', locale: 'sv-SE', quality: 'good' },
+  { name: 'nb-NO-IselinNeural', label: 'Iselin (Norway)', locale: 'nb-NO', quality: 'good' },
+  { name: 'nb-NO-FinnNeural', label: 'Finn (Norway)', locale: 'nb-NO', quality: 'good' },
+  { name: 'fi-FI-NooraNeural', label: 'Noora (Finland)', locale: 'fi-FI', quality: 'good' },
+  { name: 'fi-FI-HarriNeural', label: 'Harri (Finland)', locale: 'fi-FI', quality: 'good' },
+  { name: 'en-IN-NeerjaNeural', label: 'Neerja (India)', locale: 'en-IN', quality: 'good' },
+  { name: 'en-IN-PrabhatNeural', label: 'Prabhat (India)', locale: 'en-IN', quality: 'good' },
+  { name: 'en-IN-AnanyaNeural', label: 'Ananya (India)', locale: 'en-IN', quality: 'good' },
+  { name: 'en-IN-ManishNeural', label: 'Manish (India)', locale: 'en-IN', quality: 'good' },
+  { name: 'en-SG-LunaNeural', label: 'Luna (Singapore)', locale: 'en-SG', quality: 'good' },
+  { name: 'en-SG-WayneNeural', label: 'Wayne (Singapore)', locale: 'en-SG', quality: 'good' },
+  { name: 'en-PH-RosaNeural', label: 'Rosa (Philippines)', locale: 'en-PH', quality: 'good' },
+  { name: 'en-PH-JamesNeural', label: 'James (Philippines)', locale: 'en-PH', quality: 'good' },
+  { name: 'en-HK-SamNeural', label: 'Sam (Hong Kong)', locale: 'en-HK', quality: 'good' },
+  { name: 'en-HK-YanNeural', label: 'Yan (Hong Kong)', locale: 'en-HK', quality: 'good' },
+  { name: 'zh-CN-XiaoxiaoNeural', label: 'Xiaoxiao (China)', locale: 'zh-CN', quality: 'premium' },
+  { name: 'zh-CN-YunxiNeural', label: 'Yunxi (China)', locale: 'zh-CN', quality: 'premium' },
+  { name: 'ja-JP-NanamiNeural', label: 'Nanami (Japan)', locale: 'ja-JP', quality: 'premium' },
+  { name: 'ja-JP-KeitaNeural', label: 'Keita (Japan)', locale: 'ja-JP', quality: 'premium' },
+  { name: 'ko-KR-SunHiNeural', label: 'SunHi (Korea)', locale: 'ko-KR', quality: 'premium' },
+  { name: 'ar-SA-ZariyahNeural', label: 'Zariyah (Saudi)', locale: 'ar-SA', quality: 'good' },
+  { name: 'en-NG-AbeoNeural', label: 'Abeo (Nigeria)', locale: 'en-NG', quality: 'good' },
+  { name: 'en-NG-EzinneNeural', label: 'Ezinne (Nigeria)', locale: 'en-NG', quality: 'good' },
+  { name: 'en-KE-AsiliaNeural', label: 'Asilia (Kenya)', locale: 'en-KE', quality: 'good' },
+  { name: 'en-KE-ChilembaNeural', label: 'Chilemba (Kenya)', locale: 'en-KE', quality: 'good' },
+  { name: 'en-ZA-LeahNeural', label: 'Leah (South Africa)', locale: 'en-ZA', quality: 'good' },
+  { name: 'en-ZA-LukeNeural', label: 'Luke (South Africa)', locale: 'en-ZA', quality: 'good' },
+  { name: 'en-TZ-ElimuNeural', label: 'Elimu (Tanzania)', locale: 'en-TZ', quality: 'good' },
+  { name: 'ar-EG-ShakirNeural', label: 'Shakir (Egypt)', locale: 'ar-EG', quality: 'good' },
+  { name: 'en-AU-NatashaNeural', label: 'Natasha (Australia)', locale: 'en-AU', quality: 'good' },
+  { name: 'en-AU-WilliamNeural', label: 'William (Australia)', locale: 'en-AU', quality: 'good' },
+  { name: 'en-AU-AnnetteNeural', label: 'Annette (Australia)', locale: 'en-AU', quality: 'good' },
+  { name: 'en-AU-KenNeural', label: 'Ken (Australia)', locale: 'en-AU', quality: 'good' },
+  { name: 'en-NZ-MitchellNeural', label: 'Mitchell (New Zealand)', locale: 'en-NZ', quality: 'good' },
+  { name: 'en-NZ-MollyNeural', label: 'Molly (New Zealand)', locale: 'en-NZ', quality: 'good' },
+  { name: 'pt-BR-FranciscaNeural', label: 'Francisca (Brazil)', locale: 'pt-BR', quality: 'good' },
+  { name: 'pt-BR-AntonioNeural', label: 'Antonio (Brazil)', locale: 'pt-BR', quality: 'good' },
+  { name: 'es-MX-DaliaNeural', label: 'Dalia (Mexico)', locale: 'es-MX', quality: 'good' },
+  { name: 'es-AR-ElenaNeural', label: 'Elena (Argentina)', locale: 'es-AR', quality: 'good' },
+  { name: 'tr-TR-EmelNeural', label: 'Emel (Turkey)', locale: 'tr-TR', quality: 'good' },
+  { name: 'tr-TR-AhmetNeural', label: 'Ahmet (Turkey)', locale: 'tr-TR', quality: 'good' },
+  { name: 'he-IL-HilaNeural', label: 'Hila (Israel)', locale: 'he-IL', quality: 'good' },
+  { name: 'he-IL-AvriNeural', label: 'Avri (Israel)', locale: 'he-IL', quality: 'good' },
+  { name: 'id-ID-GadisNeural', label: 'Gadis (Indonesia)', locale: 'id-ID', quality: 'good' },
+  { name: 'id-ID-ArdiNeural', label: 'Ardi (Indonesia)', locale: 'id-ID', quality: 'good' },
+  { name: 'ms-MY-YasminNeural', label: 'Yasmin (Malaysia)', locale: 'ms-MY', quality: 'good' },
+  { name: 'ms-MY-OsmanNeural', label: 'Osman (Malaysia)', locale: 'ms-MY', quality: 'good' },
+  { name: 'vi-VN-HoaiMyNeural', label: 'Hoai My (Vietnam)', locale: 'vi-VN', quality: 'good' },
+  { name: 'vi-VN-NamMinhNeural', label: 'Nam Minh (Vietnam)', locale: 'vi-VN', quality: 'good' },
+  { name: 'th-TH-PremwadeeNeural', label: 'Premwadee (Thailand)', locale: 'th-TH', quality: 'good' },
+  { name: 'th-TH-NiwatNeural', label: 'Niwat (Thailand)', locale: 'th-TH', quality: 'good' },
+  { name: 'cs-CZ-VlastaNeural', label: 'Vlasta (Czech)', locale: 'cs-CZ', quality: 'good' },
+  { name: 'cs-CZ-AntoninNeural', label: 'Antonin (Czech)', locale: 'cs-CZ', quality: 'good' },
+  { name: 'hu-HU-NoemiNeural', label: 'Noemi (Hungary)', locale: 'hu-HU', quality: 'good' },
+  { name: 'hu-HU-TamasNeural', label: 'Tamas (Hungary)', locale: 'hu-HU', quality: 'good' },
+  { name: 'el-GR-AthinaNeural', label: 'Athina (Greece)', locale: 'el-GR', quality: 'good' },
+  { name: 'el-GR-NestorasNeural', label: 'Nestoras (Greece)', locale: 'el-GR', quality: 'good' },
+  { name: 'ro-RO-AlinaNeural', label: 'Alina (Romania)', locale: 'ro-RO', quality: 'good' },
+  { name: 'ro-RO-EmilNeural', label: 'Emil (Romania)', locale: 'ro-RO', quality: 'good' },
+  { name: 'sk-SK-ViktoriaNeural', label: 'Viktoria (Slovakia)', locale: 'sk-SK', quality: 'good' },
+  { name: 'sk-SK-LukasNeural', label: 'Lukas (Slovakia)', locale: 'sk-SK', quality: 'good' },
+  { name: 'sl-SI-PetraNeural', label: 'Petra (Slovenia)', locale: 'sl-SI', quality: 'good' },
+  { name: 'sl-SI-RokNeural', label: 'Rok (Slovenia)', locale: 'sl-SI', quality: 'good' },
+  { name: 'hr-HR-GabrijelaNeural', label: 'Gabrijela (Croatia)', locale: 'hr-HR', quality: 'good' },
+  { name: 'hr-HR-SreckoNeural', label: 'Srecko (Croatia)', locale: 'hr-HR', quality: 'good' },
 ];
 
 // ----- FAIR – 82 voices -----
 const FAIR_VOICES = [
-  // North America
   { name: 'en-US-JennyNeural', label: 'Jenny US', locale: 'en-US' },
   { name: 'en-US-AriaNeural', label: 'Aria US', locale: 'en-US' },
   { name: 'en-US-MichelleNeural', label: 'Michelle US', locale: 'en-US' },
@@ -204,7 +179,6 @@ const FAIR_VOICES = [
   { name: 'en-CA-LiamNeural', label: 'Liam CA', locale: 'en-CA' },
   { name: 'en-CA-EmmaNeural', label: 'Emma CA', locale: 'en-CA' },
   { name: 'en-CA-BrentNeural', label: 'Brent CA', locale: 'en-CA' },
-  // Europe (28)
   { name: 'en-GB-SoniaNeural', label: 'Sonia UK', locale: 'en-GB' },
   { name: 'en-GB-RyanNeural', label: 'Ryan UK', locale: 'en-GB' },
   { name: 'en-GB-LibbyNeural', label: 'Libby UK', locale: 'en-GB' },
@@ -237,7 +211,6 @@ const FAIR_VOICES = [
   { name: 'nb-NO-FinnNeural', label: 'Finn NO', locale: 'nb-NO' },
   { name: 'fi-FI-NooraNeural', label: 'Noora FI', locale: 'fi-FI' },
   { name: 'fi-FI-HarriNeural', label: 'Harri FI', locale: 'fi-FI' },
-  // Asia (16)
   { name: 'en-IN-NeerjaNeural', label: 'Neerja IN', locale: 'en-IN' },
   { name: 'en-IN-PrabhatNeural', label: 'Prabhat IN', locale: 'en-IN' },
   { name: 'en-IN-AnanyaNeural', label: 'Ananya IN', locale: 'en-IN' },
@@ -254,7 +227,6 @@ const FAIR_VOICES = [
   { name: 'ja-JP-KeitaNeural', label: 'Keita JP', locale: 'ja-JP' },
   { name: 'ko-KR-SunHiNeural', label: 'SunHi KR', locale: 'ko-KR' },
   { name: 'ar-SA-ZariyahNeural', label: 'Zariyah SA', locale: 'ar-SA' },
-  // Africa (8)
   { name: 'en-NG-AbeoNeural', label: 'Abeo NG', locale: 'en-NG' },
   { name: 'en-NG-EzinneNeural', label: 'Ezinne NG', locale: 'en-NG' },
   { name: 'en-KE-AsiliaNeural', label: 'Asilia KE', locale: 'en-KE' },
@@ -263,14 +235,12 @@ const FAIR_VOICES = [
   { name: 'en-ZA-LukeNeural', label: 'Luke ZA', locale: 'en-ZA' },
   { name: 'en-TZ-ElimuNeural', label: 'Elimu TZ', locale: 'en-TZ' },
   { name: 'ar-EG-ShakirNeural', label: 'Shakir EG', locale: 'ar-EG' },
-  // Oceania (6)
   { name: 'en-AU-NatashaNeural', label: 'Natasha AU', locale: 'en-AU' },
   { name: 'en-AU-WilliamNeural', label: 'William AU', locale: 'en-AU' },
   { name: 'en-AU-AnnetteNeural', label: 'Annette AU', locale: 'en-AU' },
   { name: 'en-AU-KenNeural', label: 'Ken AU', locale: 'en-AU' },
   { name: 'en-NZ-MitchellNeural', label: 'Mitchell NZ', locale: 'en-NZ' },
   { name: 'en-NZ-MollyNeural', label: 'Molly NZ', locale: 'en-NZ' },
-  // South America (4)
   { name: 'pt-BR-FranciscaNeural', label: 'Francisca BR', locale: 'pt-BR' },
   { name: 'pt-BR-AntonioNeural', label: 'Antonio BR', locale: 'pt-BR' },
   { name: 'es-MX-DaliaNeural', label: 'Dalia MX', locale: 'es-MX' },
@@ -325,7 +295,6 @@ function getVoiceForLanguage(lang) {
   if (!locale) return null;
   const candidates = voiceMap[locale] || [];
   if (candidates.length === 0) return null;
-  // Prefer premium
   const premium = candidates.filter(v => v.quality === 'premium');
   return (premium.length > 0 ? premium[0] : candidates[0]).name;
 }
@@ -424,7 +393,6 @@ function normalizeNumbersLang(text, lang) {
     });
     return text;
   }
-  // For other languages, do digit-by-digit
   const langMap = {
     cmn: { digits: '零一二三四五六七八九' },
     jpn: { digits: '零一二三四五六七八九' },
@@ -447,7 +415,7 @@ function applyCharacterVoices(text, characterMap) {
   return text.replace(/"([^"]*)"/g, (match, inner) => {
     const voice = voices[idx % voices.length];
     idx++;
-    return `<char voice="${voice}">"${inner}"</char>`;
+    return `[${voice} voice] "${inner}"`;
   });
 }
 
@@ -455,22 +423,22 @@ function applyCharacterVoices(text, characterMap) {
 //  NARRATION MODES
 // ============================================================
 const NARRATION_MODES = {
-  anime_narrator: { speed: 0.90, pitch: -2, pause_multiplier: 1.5 },
-  assistant: { speed: 1.0, pitch: 0, pause_multiplier: 1.0 },
-  news: { speed: 0.95, pitch: 0, pause_multiplier: 0.8 },
-  story: { speed: 0.85, pitch: -1, pause_multiplier: 1.3 },
-  education: { speed: 0.90, pitch: 0, pause_multiplier: 1.2 },
-  documentary: { speed: 0.80, pitch: -2, pause_multiplier: 1.4 },
-  character: { speed: 1.0, pitch: 5, pause_multiplier: 1.0 },
-  whisper: { speed: 0.70, pitch: 5, pause_multiplier: 1.2 },
-  dramatic: { speed: 0.75, pitch: -5, pause_multiplier: 1.8 },
-  fast_talker: { speed: 1.4, pitch: 0, pause_multiplier: 0.5 },
+  anime_narrator: { speed: 0.90, pitch: -2 },
+  assistant: { speed: 1.0, pitch: 0 },
+  news: { speed: 0.95, pitch: 0 },
+  story: { speed: 0.85, pitch: -1 },
+  education: { speed: 0.90, pitch: 0 },
+  documentary: { speed: 0.80, pitch: -2 },
+  character: { speed: 1.0, pitch: 5 },
+  whisper: { speed: 0.70, pitch: 5 },
+  dramatic: { speed: 0.75, pitch: -5 },
+  fast_talker: { speed: 1.4, pitch: 0 },
 };
 
 // ============================================================
-//  SSML BUILDER (full pipeline)
+//  TEXT PROCESSOR (no SSML - just clean text with rate/pitch)
 // ============================================================
-async function buildSSMLFull({
+function processText({
   text,
   voice,
   speed = 1.0,
@@ -507,129 +475,51 @@ async function buildSSMLFull({
   if (!emotion) emotion = detectEmotion(processed);
   const emotionProsody = getEmotionProsody(emotion);
 
-  // Character voices
+  // Character voices (simplified - just add markers)
   processed = applyCharacterVoices(processed, characterMap);
-
-  // Split sentences - USING CUSTOM FUNCTION (no external dependency)
-  const sentences = getSentences(processed);
 
   // Apply mode
   const modeSettings = NARRATION_MODES[mode] || NARRATION_MODES.story;
-  const baseSpeed = modeSettings.speed || 1.0;
-  const basePitch = modeSettings.pitch || 0;
-  const pauseMult = modeSettings.pause_multiplier || 1.0;
+  const finalSpeed = speed * (1 + (emotionProsody.rate / 100)) * (modeSettings.speed / 1.0);
+  const finalPitch = pitch + emotionProsody.pitch + (modeSettings.pitch || 0);
 
-  const finalSpeed = speed * (1 + (emotionProsody.rate / 100)) * (baseSpeed / 1.0);
-  const finalPitch = pitch + emotionProsody.pitch + basePitch;
+  return { text: processed, lang, emotion, finalSpeed, finalPitch };
+}
 
-  // Build with pauses
-  const sentenceItems = sentences.map((s, idx) => {
-    const lastChar = s.trim().slice(-1);
-    const basePause = getPauseDuration(lastChar);
-    const pauseMs = basePause * pauseMult * emotionProsody.pauseMult;
-    const breakTag = (idx < sentences.length - 1) ? `<break time="${pauseMs}ms"/>` : '';
-    // Check for character voice
-    const charMatch = s.match(/<char voice="([^"]+)">(.+)<\/char>/);
-    if (charMatch) {
-      return `<voice name="${charMatch[1]}">${charMatch[2]}</voice>${breakTag}`;
+// ============================================================
+//  EDGE-TTS WRAPPER (USING V7's WORKING APPROACH)
+// ============================================================
+function edgeTTS(voice, text, outputFile, rate = '', pitch = '') {
+  return new Promise((resolve, reject) => {
+    // Escape double quotes in text
+    const escapedText = text.replace(/"/g, '\\"');
+    
+    // Build command using python3 -m edge_tts (v7 approach)
+    let cmd = `python3 -m edge_tts --voice "${voice}" --text "${escapedText}" --write-media "${outputFile}"`;
+    
+    if (rate) {
+      cmd += ` --rate "${rate}"`;
     }
-    return `${s}${breakTag}`;
-  }).join(' ');
-
-  const rateAttr = finalSpeed !== 1.0 ? `rate="${finalSpeed > 1 ? '+' : ''}${Math.round((finalSpeed - 1) * 100)}%"` : '';
-  const pitchAttr = finalPitch !== 0 ? `pitch="${finalPitch > 0 ? '+' : ''}${finalPitch}%"` : '';
-
-  const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-    <voice name="${voice}">
-      <prosody ${rateAttr} ${pitchAttr}>
-        ${sentenceItems}
-      </prosody>
-    </voice>
-  </speak>`;
-
-  return { ssml, lang, emotion, finalSpeed, finalPitch };
-}
-
-// ============================================================
-//  EDGE-TTS WRAPPER (with concurrency queue) - FIXED
-//  Uses -f (file) flag for proper SSML processing
-// ============================================================
-let queue = [];
-let processing = false;
-
-function edgeTTSWithSSML(ssml, voice, outputFile) {
-  return new Promise((resolve, reject) => {
-    const task = { ssml, voice, outputFile, resolve, reject };
-    queue.push(task);
-    processQueue();
-  });
-}
-
-async function processQueue() {
-  if (processing || queue.length === 0) return;
-  processing = true;
-  const task = queue.shift();
-  
-  let tempFile = null;
-  try {
-    // Write SSML to temporary file for proper processing
-    tempFile = path.join(__dirname, 'audio', `temp_${uuidv4()}.ssml`);
-    fs.writeFileSync(tempFile, task.ssml, 'utf8');
     
-    // Use -f flag to read SSML from file (this properly processes SSML)
-    const args = ['-f', tempFile, '--voice', task.voice, '--write-media', task.outputFile];
+    if (pitch) {
+      cmd += ` --pitch "${pitch}"`;
+    }
     
-    console.log(`🔊 Generating audio for: ${path.basename(task.outputFile)}`);
+    console.log(`🔊 Generating: ${path.basename(outputFile)}`);
+    console.log(`📝 Text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
     
-    await new Promise((res, rej) => {
-      execFile('edge-tts', args, (error, stdout, stderr) => {
-        // Clean up temp file
-        try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
-        
-        if (error) {
-          console.error('❌ Edge-TTS error:', error.message);
-          if (stderr) console.error('stderr:', stderr);
-          rej(error);
-        } else if (!fs.existsSync(task.outputFile) || fs.statSync(task.outputFile).size === 0) {
-          rej(new Error('Audio file empty or not created'));
-        } else {
-          console.log(`✅ Audio generated successfully (${(fs.statSync(task.outputFile).size / 1024).toFixed(1)} KB)`);
-          res();
-        }
-      });
+    exec(cmd, (error, stdout, stderr) => {
+      if (error) {
+        console.error('❌ Edge-TTS error:', error.message);
+        console.error('stderr:', stderr);
+        reject(error);
+      } else if (!fs.existsSync(outputFile) || fs.statSync(outputFile).size === 0) {
+        reject(new Error('Audio file empty'));
+      } else {
+        console.log(`✅ Audio generated (${(fs.statSync(outputFile).size / 1024).toFixed(1)} KB)`);
+        resolve();
+      }
     });
-    task.resolve();
-  } catch (e) {
-    console.error('❌ Queue error:', e);
-    // Clean up temp file if it exists
-    try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
-    task.reject(e);
-  } finally {
-    processing = false;
-    processQueue();
-  }
-}
-
-// ============================================================
-//  AUDIO MASTERING (ffmpeg)
-// ============================================================
-async function masterAudio(inputFile, outputFile) {
-  if (!ffmpeg) {
-    fs.copyFileSync(inputFile, outputFile);
-    return;
-  }
-  return new Promise((resolve, reject) => {
-    ffmpeg(inputFile)
-      .audioFilters([
-        'volume=2',
-        'compand=0.3|0.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2',
-        'silenceremove=1:0:-50dB'
-      ])
-      .audioCodec('libmp3lame')
-      .audioBitrate('128k')
-      .on('end', resolve)
-      .on('error', reject)
-      .save(outputFile);
   });
 }
 
@@ -695,16 +585,58 @@ app.get('/api/modes', (req, res) => {
   res.json(Object.keys(NARRATION_MODES));
 });
 
-// ElevenLabs endpoints (placeholder)
+// ElevenLabs endpoints
 app.post('/api/elevenlabs/clone', async (req, res) => {
-  res.status(501).json({ error: 'ElevenLabs clone not implemented yet' });
+  try {
+    const { audioBase64, name } = req.body;
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
+    const form = new FormData();
+    form.append('name', name || `Voice_${Date.now()}`);
+    form.append('files', audioBuffer, {filename: 'sample.mp3'});
+
+    const response = await fetch('https://api.elevenlabs.io/v1/voices/add', {
+      method: 'POST',
+      headers: {'xi-api-key': process.env.ELEVENLABS_API_KEY, ...form.getHeaders()},
+      body: form
+    });
+
+    const data = await response.json();
+    if (data.voice_id) {
+      res.json({success: true, voice_id: data.voice_id});
+    } else {
+      res.status(400).json({error: data.detail || 'Clone failed'});
+    }
+  } catch (e) {
+    res.status(500).json({error: e.message});
+  }
 });
 
 app.post('/api/elevenlabs/tts', async (req, res) => {
-  res.status(501).json({ error: 'ElevenLabs TTS not implemented yet' });
+  try {
+    const { text, voice_id } = req.body;
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({text, model_id: 'eleven_multilingual_v2'})
+    });
+
+    if (!response.ok) throw new Error(`ElevenLabs error: ${response.status}`);
+
+    const buffer = await response.buffer();
+    const filename = `eleven_${uuidv4()}.mp3`;
+    fs.writeFileSync(path.join(__dirname, 'audio', filename), buffer);
+    res.json({success: true, url: `/audio/${filename}`});
+  } catch (e) {
+    res.status(500).json({error: e.message});
+  }
 });
 
-// Main TTS
+// ============================================================
+//  MAIN TTS ENDPOINT (USING V7's WORKING APPROACH)
+// ============================================================
 app.post('/api/tts', async (req, res) => {
   try {
     let { text, voice, type = 'realistic', speed = 1.0, pitch = 0, mode = 'story', emotion, characters, user_pronunciation } = req.body;
@@ -744,36 +676,39 @@ app.post('/api/tts', async (req, res) => {
       });
     }
 
-    // Build SSML
-    const { ssml, lang, emotion: detectedEmotion, finalSpeed, finalPitch } = await buildSSMLFull({
+    // Process text (no SSML)
+    const { text: processedText, lang, emotion: detectedEmotion, finalSpeed, finalPitch } = processText({
       text, voice, speed, pitch, mode, emotion, characterMap: characters, userPronunciation: user_pronunciation,
     });
+
+    // Calculate rate and pitch for edge-tts
+    const rateValue = Math.round((finalSpeed - 1) * 100);
+    const pitchValue = Math.round(finalPitch);
+    
+    const rate = rateValue !== 0 ? `${rateValue > 0 ? '+' : ''}${rateValue}%` : '';
+    const pitchStr = pitchValue !== 0 ? `${pitchValue > 0 ? '+' : ''}${pitchValue}%` : '';
 
     // Generate audio
     const filename = `${type}_${uuidv4()}.mp3`;
     const filepath = path.join(__dirname, 'audio', filename);
-    await edgeTTSWithSSML(ssml, voice, filepath);
-
-    // Master
-    const masteredFile = path.join(__dirname, 'audio', `mastered_${filename}`);
-    await masterAudio(filepath, masteredFile);
-    fs.unlinkSync(filepath);
-    fs.renameSync(masteredFile, filepath);
+    await edgeTTS(voice, processedText, filepath, rate, pitchStr);
 
     // Metadata
+    const size = fs.statSync(filepath).size;
     let duration = 0;
     try {
-      if (ffmpeg) {
-        const probe = await new Promise((resolve, reject) => {
-          ffmpeg.ffprobe(filepath, (err, metadata) => {
-            if (err) reject(err);
-            else resolve(metadata);
-          });
+      // Try to get duration from ffprobe if ffmpeg is available
+      const { exec: execFF } = await import('child_process');
+      const ffprobeCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filepath}"`;
+      await new Promise((resolve) => {
+        execFF(ffprobeCmd, (error, stdout) => {
+          if (!error && stdout) {
+            duration = parseFloat(stdout) || 0;
+          }
+          resolve();
         });
-        duration = probe.format.duration || 0;
-      }
+      });
     } catch {}
-    const size = fs.statSync(filepath).size;
 
     // Cache
     addCacheEntry(text, voice, speed, pitch, mode, 'mp3', filepath, duration, size);
@@ -803,7 +738,6 @@ app.get('/api/health', (req, res) => {
     realisticCount: REALISTIC_VOICES.length,
     fairCount: FAIR_VOICES.length,
     cacheEntries: db.entries.length,
-    queueLength: queue.length,
   });
 });
 
@@ -814,6 +748,5 @@ app.listen(PORT, () => {
   console.log(`🚀 HYEZEN TTS v10 running on port ${PORT}`);
   console.log(`✅ Realistic: ${REALISTIC_VOICES.length} voices, Fair: ${FAIR_VOICES.length}`);
   console.log('✅ Modes:', Object.keys(NARRATION_MODES).join(', '));
-  console.log('✅ No rate limiting – queue handles concurrency.');
-  console.log('✅ Audio mastering:', ffmpeg ? 'enabled' : 'disabled');
+  console.log('✅ Using v7 edge-tts approach - no SSML issues!');
 });
