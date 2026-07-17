@@ -569,30 +569,32 @@ async function processQueue() {
   processing = true;
   const task = queue.shift();
   try {
-    // FIX: Use '--ssml' for SSML input (correct flag for edge-tts)
-    const args = ['--ssml', task.ssml, '--voice', task.voice, '--write-media', task.outputFile];
+    // Edge-TTS uses -t for text (SSML works as text input)
+    const args = ['-t', task.ssml, '--voice', task.voice, '--write-media', task.outputFile];
+    
+    console.log(`🔊 Generating audio for: ${path.basename(task.outputFile)}`);
+    
     await new Promise((res, rej) => {
       execFile('edge-tts', args, (error, stdout, stderr) => {
         if (error) {
-          console.error('Edge-TTS error:', error.message);
-          console.error('Edge-TTS stderr:', stderr);
-          console.error('Edge-TTS stdout:', stdout);
+          console.error('❌ Edge-TTS error:', error.message);
+          if (stderr) console.error('stderr:', stderr);
           rej(error);
         } else if (!fs.existsSync(task.outputFile) || fs.statSync(task.outputFile).size === 0) {
           rej(new Error('Audio file empty or not created'));
         } else {
-          console.log(`✅ Audio generated: ${task.outputFile} (${fs.statSync(task.outputFile).size} bytes)`);
+          console.log(`✅ Audio generated successfully (${fs.statSync(task.outputFile).size} bytes)`);
           res();
         }
       });
     });
     task.resolve();
   } catch (e) {
-    console.error('Queue processing error:', e);
+    console.error('❌ Queue error:', e);
     task.reject(e);
   } finally {
     processing = false;
-    processQueue(); // process next
+    processQueue();
   }
 }
 
@@ -681,7 +683,7 @@ app.get('/api/modes', (req, res) => {
   res.json(Object.keys(NARRATION_MODES));
 });
 
-// ElevenLabs endpoints (placeholder - add your implementation)
+// ElevenLabs endpoints (placeholder)
 app.post('/api/elevenlabs/clone', async (req, res) => {
   res.status(501).json({ error: 'ElevenLabs clone not implemented yet' });
 });
