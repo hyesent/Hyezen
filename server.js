@@ -1,5 +1,5 @@
 // ============================================================
-//  HYEZEN TTS v10 – FINAL PRODUCTION VERSION
+//  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FIXED)
 //  No rate limiting, hardcoded voices, all features.
 //  Concurrency handled via a simple queue (optional).
 // ============================================================
@@ -16,7 +16,7 @@ import FormData from 'form-data';
 import { v4 as uuidv4 } from 'uuid';
 import { franc } from 'franc';
 import { toWords } from 'number-to-words';
-import { splitIntoSentences } from 'sentence-splitter';
+import splitter from 'sentence-splitter';  // ← FIXED: changed import
 import crypto from 'crypto';
 
 // Optional ffmpeg for audio mastering
@@ -500,8 +500,8 @@ async function buildSSMLFull({
   // Character voices
   processed = applyCharacterVoices(processed, characterMap);
 
-  // Split sentences
-  const sentences = splitIntoSentences(processed).map(item => item.raw).filter(s => s.trim().length > 0);
+  // Split sentences - FIXED: using splitter.default or splitter.splitIntoSentences
+  const sentences = splitter.splitIntoSentences(processed).map(item => item.raw).filter(s => s.trim().length > 0);
 
   // Apply mode
   const modeSettings = NARRATION_MODES[mode] || NARRATION_MODES.story;
