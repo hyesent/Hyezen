@@ -17,13 +17,13 @@ export default function App() {
   const [recording, setRecording] = useState(false);
   const [synthVoices, setSynthVoices] = useState([]);
 
-  // --- v10 features ---
+  // v10 features
   const [modes, setModes] = useState([]);
   const [selectedMode, setSelectedMode] = useState('story');
   const [characters, setCharacters] = useState('{}');
   
-  // --- NEW: Custom mode controls ---
-  const [showCustomControls, setShowCustomControls] = useState(false);
+  // Custom mode controls
+  const [showCustomControls, setShowCustomControls] = useState(true);
   const [customSpeed, setCustomSpeed] = useState(1.0);
   const [customPitch, setCustomPitch] = useState(0);
   const [customMode, setCustomMode] = useState('story');
@@ -59,7 +59,6 @@ export default function App() {
     setLoadingStatus('Waking up servers...');
     const maxRetries = 20;
     let attempts = 0;
-
     while (attempts < maxRetries) {
       try {
         const res = await fetch(`${API_URL}/api/health`, {
@@ -71,9 +70,7 @@ export default function App() {
           setTimeout(() => setBackendReady(true), 500);
           return;
         }
-      } catch (err) {
-        console.log('Backend sleeping, attempt:', attempts + 1);
-      }
+      } catch (err) {}
       attempts++;
       setLoadingStatus(`Waking up servers... ${attempts}/${maxRetries}`);
       await new Promise(r => setTimeout(r, 3000));
@@ -86,11 +83,10 @@ export default function App() {
     if (!backendReady) return;
     fetchVoices(activeTab);
     fetchModes();
-    // For custom tab, use realistic voices by default
     if (activeTab === 'custom') {
       fetchVoices('realistic');
     }
-    setChat([{type: 'bot', text: `Welcome to ${themes[activeTab].name} 👋 Tap a voice card below to preview`}]);
+    setChat([{type: 'bot', text: `Welcome to ${themes[activeTab].name} 👋`}]);
     setVoiceId('');
   }, [activeTab, backendReady]);
 
@@ -106,7 +102,6 @@ export default function App() {
 
   async function fetchVoices(type) {
     try {
-      // For custom tab, always fetch realistic voices
       const actualType = type === 'custom' ? 'realistic' : type;
       const res = await fetch(`${API_URL}/api/voices/${actualType}`);
       const data = await res.json();
@@ -140,7 +135,7 @@ export default function App() {
     
     if (activeTab === 'robotic') {
       speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance('Voice preview testing 1 2 3');
+      const utterance = new SpeechSynthesisUtterance('Voice preview 1 2 3');
       const selectedVoice = getRoboticVoice(v);
       if (selectedVoice) utterance.voice = selectedVoice;
       utterance.rate = 1.1;
@@ -224,7 +219,6 @@ export default function App() {
           setChat(prev => [...prev, {type: 'bot', text: 'Error: ' + data.error}]);
         }
       } else if (activeTab === 'custom') {
-        // Use custom settings
         const payload = {
           text: currentText,
           voice: customVoice || voice,
@@ -426,7 +420,8 @@ export default function App() {
         borderBottomRightRadius: '0',
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
         position: 'relative',
-        zIndex: 10
+        zIndex: 10,
+        flexShrink: 0
       }}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
           <div style={{fontSize: '22px', fontWeight: '800', letterSpacing: '3px'}}>H Y E Z E N</div>
@@ -477,7 +472,7 @@ export default function App() {
         <div style={{fontSize: '28px', fontWeight: '800', marginBottom: '4px', letterSpacing: '-1px'}}>{themes[activeTab].name}</div>
         <div style={{fontSize: '14px', opacity: 0.85, marginBottom: '12px'}}>{themes[activeTab].sub}</div>
 
-        {/* --- Mode selection chips --- */}
+        {/* Mode chips for non-custom */}
         {modes.length > 0 && activeTab !== 'custom' && (
           <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px'}}>
             {modes.map(m => (
@@ -503,134 +498,163 @@ export default function App() {
           </div>
         )}
 
-        {/* --- CUSTOM MODE CONTROLS --- */}
+        {/* --- CUSTOM MODE CONTROLS (collapsible) --- */}
         {activeTab === 'custom' && (
-          <div style={{
-            background: 'rgba(0,0,0,0.3)',
-            borderRadius: '16px',
-            padding: '16px',
-            marginTop: '8px'
-          }}>
-            <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
-              {/* Speed Control */}
-              <div>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
-                  <span style={{fontSize: '13px', fontWeight: '500'}}>Speed</span>
-                  <span style={{fontSize: '13px', fontWeight: '700', color: '#fee140'}}>{customSpeed.toFixed(1)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.1"
-                  value={customSpeed}
-                  onChange={e => setCustomSpeed(parseFloat(e.target.value))}
-                  style={{
-                    width: '100%',
-                    height: '4px',
-                    borderRadius: '2px',
-                    background: 'linear-gradient(90deg, #667eea, #fee140)',
-                    outline: 'none',
-                    WebkitAppearance: 'none'
-                  }}
-                />
-                <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.5, marginTop: '2px'}}>
-                  <span>Slow (0.5x)</span>
-                  <span>Normal (1.0x)</span>
-                  <span>Fast (2.0x)</span>
-                </div>
-              </div>
-
-              {/* Pitch Control */}
-              <div>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
-                  <span style={{fontSize: '13px', fontWeight: '500'}}>Pitch</span>
-                  <span style={{fontSize: '13px', fontWeight: '700', color: '#a8edea'}}>{customPitch > 0 ? '+' : ''}{customPitch}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="-50"
-                  max="50"
-                  step="1"
-                  value={customPitch}
-                  onChange={e => setCustomPitch(parseInt(e.target.value))}
-                  style={{
-                    width: '100%',
-                    height: '4px',
-                    borderRadius: '2px',
-                    background: 'linear-gradient(90deg, #667eea, #a8edea)',
-                    outline: 'none',
-                    WebkitAppearance: 'none'
-                  }}
-                />
-                <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.5, marginTop: '2px'}}>
-                  <span>Low (-50%)</span>
-                  <span>Normal (0%)</span>
-                  <span>High (+50%)</span>
-                </div>
-              </div>
-
-              {/* Mode Selector for Custom */}
-              <div>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
-                  <span style={{fontSize: '13px', fontWeight: '500'}}>Narration Mode</span>
-                </div>
-                <select
-                  value={customMode}
-                  onChange={e => setCustomMode(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    background: 'rgba(255,255,255,0.1)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    borderRadius: '10px',
-                    color: '#fff',
-                    fontSize: '13px',
-                    outline: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {modes.map(m => (
-                    <option key={m} value={m} style={{background: '#1a1a2e'}}>
-                      {m.replace('_', ' ').toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Current Settings Display */}
-              <div style={{
+          <div style={{marginTop: '8px'}}>
+            <button
+              onClick={() => setShowCustomControls(!showCustomControls)}
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '6px 14px',
+                color: '#fff',
+                fontSize: '13px',
+                cursor: 'pointer',
                 display: 'flex',
-                gap: '8px',
-                flexWrap: 'wrap',
-                fontSize: '11px',
-                opacity: 0.7,
-                marginTop: '4px'
+                alignItems: 'center',
+                gap: '6px',
+                backdropFilter: 'blur(10px)'
+              }}
+            >
+              {showCustomControls ? '▼ Hide Controls' : '▶ Show Controls'}
+              <span style={{fontSize: '10px', opacity: 0.7}}>
+                {showCustomControls ? '' : `(${customSpeed.toFixed(1)}x, ${customPitch>0?'+':''}${customPitch}%)`}
+              </span>
+            </button>
+
+            {showCustomControls && (
+              <div style={{
+                background: 'rgba(0,0,0,0.3)',
+                borderRadius: '16px',
+                padding: '16px',
+                marginTop: '10px',
+                maxHeight: '280px',
+                overflowY: 'auto'
               }}>
-                <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
-                  ⚡ {customSpeed.toFixed(1)}x
-                </span>
-                <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
-                  🎵 {customPitch > 0 ? '+' : ''}{customPitch}%
-                </span>
-                <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
-                  📖 {customMode.replace('_', ' ')}
-                </span>
-                <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
-                  🗣️ {customVoice || voice}
-                </span>
+                <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
+                  {/* Speed Control */}
+                  <div>
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
+                      <span style={{fontSize: '13px', fontWeight: '500'}}>Speed</span>
+                      <span style={{fontSize: '13px', fontWeight: '700', color: '#fee140'}}>{customSpeed.toFixed(1)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.0"
+                      step="0.1"
+                      value={customSpeed}
+                      onChange={e => setCustomSpeed(parseFloat(e.target.value))}
+                      style={{
+                        width: '100%',
+                        height: '4px',
+                        borderRadius: '2px',
+                        background: 'linear-gradient(90deg, #667eea, #fee140)',
+                        outline: 'none',
+                        WebkitAppearance: 'none'
+                      }}
+                    />
+                    <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.5, marginTop: '2px'}}>
+                      <span>Slow (0.5x)</span>
+                      <span>Normal (1.0x)</span>
+                      <span>Fast (2.0x)</span>
+                    </div>
+                  </div>
+
+                  {/* Pitch Control */}
+                  <div>
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
+                      <span style={{fontSize: '13px', fontWeight: '500'}}>Pitch</span>
+                      <span style={{fontSize: '13px', fontWeight: '700', color: '#a8edea'}}>{customPitch > 0 ? '+' : ''}{customPitch}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-50"
+                      max="50"
+                      step="1"
+                      value={customPitch}
+                      onChange={e => setCustomPitch(parseInt(e.target.value))}
+                      style={{
+                        width: '100%',
+                        height: '4px',
+                        borderRadius: '2px',
+                        background: 'linear-gradient(90deg, #667eea, #a8edea)',
+                        outline: 'none',
+                        WebkitAppearance: 'none'
+                      }}
+                    />
+                    <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '10px', opacity: 0.5, marginTop: '2px'}}>
+                      <span>Low (-50%)</span>
+                      <span>Normal (0%)</span>
+                      <span>High (+50%)</span>
+                    </div>
+                  </div>
+
+                  {/* Mode Selector for Custom */}
+                  <div>
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
+                      <span style={{fontSize: '13px', fontWeight: '500'}}>Narration Mode</span>
+                    </div>
+                    <select
+                      value={customMode}
+                      onChange={e => setCustomMode(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: '10px',
+                        color: '#fff',
+                        fontSize: '13px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {modes.map(m => (
+                        <option key={m} value={m} style={{background: '#1a1a2e'}}>
+                          {m.replace('_', ' ').toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Current Settings Display */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '6px',
+                    flexWrap: 'wrap',
+                    fontSize: '11px',
+                    opacity: 0.7,
+                    marginTop: '4px'
+                  }}>
+                    <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
+                      ⚡ {customSpeed.toFixed(1)}x
+                    </span>
+                    <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
+                      🎵 {customPitch > 0 ? '+' : ''}{customPitch}%
+                    </span>
+                    <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
+                      📖 {customMode.replace('_', ' ')}
+                    </span>
+                    <span style={{background: 'rgba(255,255,255,0.1)', padding: '2px 10px', borderRadius: '12px'}}>
+                      🗣️ {customVoice || voice}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* --- Chat area --- */}
+      {/* --- CHAT AREA (flex:1, always visible) --- */}
       <div style={{
         flex: 1,
         overflowY: 'auto',
         padding: '16px 20px',
-        background: '#0a0a0f'
+        background: '#0a0a0f',
+        minHeight: '0' // Prevents flex overflow
       }}>
         {chat.map((msg, i) => (
           <div key={i} style={{
@@ -639,7 +663,7 @@ export default function App() {
             marginBottom: '12px'
           }}>
             <div style={{
-              maxWidth: '75%',
+              maxWidth: '80%',
               padding: msg.audio ? '8px' : '12px 16px',
               borderRadius: '18px',
               background: msg.type==='user' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.08)',
@@ -651,7 +675,12 @@ export default function App() {
             }}>
               {msg.audio ? (
                 <div>
-                  <audio controls src={msg.audio} style={{width: '220px', borderRadius: '12px', marginBottom: '8px'}}></audio>
+                  <audio 
+                    controls 
+                    src={msg.audio} 
+                    style={{width: '240px', borderRadius: '12px', marginBottom: '8px'}}
+                    onError={(e) => console.error('Audio load error:', e.target.src)}
+                  />
                   <div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}>
                     <button onClick={() => downloadAudio(msg.audio, msg.filename)} style={{
                       padding: '6px 12px',
@@ -671,7 +700,7 @@ export default function App() {
             </div>
           </div>
         ))}
-        {loading && <div style={{textAlign: 'center', color: '#888', fontSize: '13px', marginTop: '10px'}}>Generating neural voice...</div>}
+        {loading && <div style={{textAlign: 'center', color: '#888', fontSize: '13px', marginTop: '10px'}}>⏳ Generating voice...</div>}
         <div ref={chatEndRef} />
       </div>
 
@@ -683,24 +712,26 @@ export default function App() {
           gap: '10px',
           overflowX: 'auto',
           scrollbarWidth: 'none',
-          msOverflowStyle: 'none'
+          msOverflowStyle: 'none',
+          flexShrink: 0
         }}>
           {voices.map(v => {
             const isSelected = activeTab === 'custom' ? customVoice === v.name : voice === v.name;
             return (
               <div key={v.name} onClick={() => previewVoice(v.name)}
                 style={{
-                  minWidth: '120px',
-                  padding: '10px 12px',
+                  minWidth: '100px',
+                  padding: '8px 12px',
                   background: isSelected ? 'rgba(102,126,234,0.3)' : 'rgba(255,255,255,0.05)',
-                  borderRadius: '14px',
+                  borderRadius: '12px',
                   cursor: 'pointer',
                   border: isSelected ? '2px solid #667eea' : '2px solid transparent',
                   transition: '0.2s',
-                  backdropFilter: 'blur(10px)'
+                  backdropFilter: 'blur(10px)',
+                  flexShrink: 0
                 }}>
-                <div style={{fontSize: '13px', fontWeight: '600'}}>{v.label}</div>
-                <div style={{fontSize: '11px', opacity: 0.6, marginTop: '4px'}}>Tap to preview</div>
+                <div style={{fontSize: '12px', fontWeight: '600'}}>{v.label}</div>
+                <div style={{fontSize: '10px', opacity: 0.6, marginTop: '2px'}}>Tap to preview</div>
               </div>
             );
           })}
@@ -712,7 +743,8 @@ export default function App() {
         background: 'rgba(20,20,30,0.8)',
         backdropFilter: 'blur(20px)',
         padding: '12px 16px',
-        borderTop: '1px solid rgba(255,255,255,0.1)'
+        borderTop: '1px solid rgba(255,255,255,0.1)',
+        flexShrink: 0
       }}>
         {activeTab === 'elevenlabs' && !voiceId ? (
           <button
@@ -734,19 +766,17 @@ export default function App() {
               boxShadow: recording ? '0 0 40px rgba(245,87,108,0.8), inset 0 0 20px rgba(0,0,0,0.3)' : '0 6px 20px rgba(102,126,234,0.5)',
               transition: 'all 0.15s',
               transform: recording ? 'scale(0.95)' : 'scale(1)',
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-              WebkitTouchCallout: 'none'
+              userSelect: 'none'
             }}>
             {recording ? '🔴 Recording... Release to stop' : '🎤 Hold to Record 10s'}
           </button>
         ) : (
           <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
             {activeTab === 'elevenlabs' && voiceId && (
-              <div style={{fontSize: '12px', color: '#0f0', paddingLeft: '4px'}}>✓ Voice Ready – Type below to speak</div>
+              <div style={{fontSize: '12px', color: '#0f0', paddingLeft: '4px'}}>✓ Voice Ready – Type below</div>
             )}
 
-            {/* Character voices input */}
+            {/* Character voices input (non-robotic, non-elevenlabs) */}
             {activeTab !== 'elevenlabs' && activeTab !== 'robotic' && (
               <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
                 <span style={{fontSize: '12px', opacity: 0.7, whiteSpace: 'nowrap'}}>Characters:</span>
@@ -756,12 +786,12 @@ export default function App() {
                   placeholder='{"hero":"Jenny", "villain":"Guy"}'
                   style={{
                     flex: 1,
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     background: 'rgba(255,255,255,0.06)',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
+                    borderRadius: '8px',
                     color: '#ccc',
-                    fontSize: '13px',
+                    fontSize: '12px',
                     outline: 'none',
                     fontFamily: 'monospace'
                   }}
@@ -774,10 +804,10 @@ export default function App() {
                 value={text}
                 onChange={e => setText(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && sendText()}
-                placeholder={activeTab === 'elevenlabs' && voiceId ? "Type text to speak in YOUR voice..." : "Type text to generate voice..."}
+                placeholder="Type text to generate voice..."
                 style={{
                   flex: 1,
-                  padding: '14px 16px',
+                  padding: '12px 16px',
                   background: 'rgba(255,255,255,0.08)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '14px',
@@ -789,7 +819,7 @@ export default function App() {
               />
               <button onClick={sendText}
                 style={{
-                  padding: '14px 18px',
+                  padding: '12px 18px',
                   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   border: 'none',
                   borderRadius: '14px',
