@@ -1,3 +1,4 @@
+
 // ============================================================
 //  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FIXED)
 //  No rate limiting, hardcoded voices, all features.
@@ -16,7 +17,9 @@ import fetch from 'node-fetch';
 import FormData from 'form-data';
 import { v4 as uuidv4 } from 'uuid';
 import { franc } from 'franc';
-import { toWords } from 'number-to-words';
+// FIX: number-to-words is CommonJS - import as default
+import pkg from 'number-to-words';
+const { toWords } = pkg;
 // sentence-splitter REMOVED – using custom function below
 import crypto from 'crypto';
 
@@ -32,6 +35,8 @@ try {
 } catch (e) {
   console.warn('⚠️ ffmpeg not installed – audio mastering disabled');
 }
+
+// ... rest of your code continues unchanged
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
