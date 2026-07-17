@@ -185,7 +185,7 @@ const REALISTIC_VOICES = [
   { name: 'hr-HR-SreckoNeural', label: 'Srecko (Croatia)', locale: 'hr-HR', quality: 'good', style: 'narrator' },
 ];
 
-// ----- FAIR – 82 voices (your original list + a few extras) -----
+// ----- FAIR – 82 voices -----
 const FAIR_VOICES = [
   // North America
   { name: 'en-US-JennyNeural', label: 'Jenny US', locale: 'en-US' },
@@ -569,20 +569,26 @@ async function processQueue() {
   processing = true;
   const task = queue.shift();
   try {
-    // FIX: Use '-t' instead of '--ssml' (edge-tts doesn't have --ssml flag)
-    const args = ['-t', task.ssml, '--voice', task.voice, '--write-media', task.outputFile];
+    // FIX: Use '--ssml' for SSML input (correct flag for edge-tts)
+    const args = ['--ssml', task.ssml, '--voice', task.voice, '--write-media', task.outputFile];
     await new Promise((res, rej) => {
       execFile('edge-tts', args, (error, stdout, stderr) => {
         if (error) {
+          console.error('Edge-TTS error:', error.message);
           console.error('Edge-TTS stderr:', stderr);
+          console.error('Edge-TTS stdout:', stdout);
           rej(error);
         } else if (!fs.existsSync(task.outputFile) || fs.statSync(task.outputFile).size === 0) {
-          rej(new Error('Audio file empty'));
-        } else res();
+          rej(new Error('Audio file empty or not created'));
+        } else {
+          console.log(`✅ Audio generated: ${task.outputFile} (${fs.statSync(task.outputFile).size} bytes)`);
+          res();
+        }
       });
     });
     task.resolve();
   } catch (e) {
+    console.error('Queue processing error:', e);
     task.reject(e);
   } finally {
     processing = false;
@@ -675,13 +681,13 @@ app.get('/api/modes', (req, res) => {
   res.json(Object.keys(NARRATION_MODES));
 });
 
-// ElevenLabs (keep your existing code)
-app.post('/api/elevenlabs/clone', async (req, res) => { 
-  // Your existing ElevenLabs clone code here
+// ElevenLabs endpoints (placeholder - add your implementation)
+app.post('/api/elevenlabs/clone', async (req, res) => {
+  res.status(501).json({ error: 'ElevenLabs clone not implemented yet' });
 });
 
-app.post('/api/elevenlabs/tts', async (req, res) => { 
-  // Your existing ElevenLabs TTS code here
+app.post('/api/elevenlabs/tts', async (req, res) => {
+  res.status(501).json({ error: 'ElevenLabs TTS not implemented yet' });
 });
 
 // Main TTS
