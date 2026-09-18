@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import JSZip from 'jszip';
 import Studio from './Studio';
+import { getStrings, detectInitialLang, interpolate, SUPPORTED_LANGS, STRINGS } from './i18n';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen.onrender.com';
 
@@ -239,11 +240,117 @@ const LS = {
 };
 
 // ═══════════════════════════════════════════════════════════
+//  LANGUAGE PICKER (first launch)
+// ═══════════════════════════════════════════════════════════
+function LangPicker({ onPick }) {
+  const browserLang = useMemo(() => {
+    try {
+      const b = (navigator.language || 'en').toLowerCase().split('-')[0];
+      if (SUPPORTED_LANGS.some(l => l.code === b)) return b;
+    } catch {}
+    return 'en';
+  }, []);
+  const s = STRINGS[browserLang] || STRINGS.en;
+
+  return (
+    <div className="lp-root">
+      <style>{`
+        .lp-root {
+          position: fixed; inset: 0;
+          background: #0a0a0f; color: #fff;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 24px; box-sizing: border-box;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          overflow-y: auto;
+        }
+        .lp-logo {
+          font-size: 14px; font-weight: 800; letter-spacing: 0.25em;
+          background: linear-gradient(90deg, #00a884, #25d366);
+          -webkit-background-clip: text; background-clip: text;
+          -webkit-text-fill-color: transparent;
+          margin-bottom: 28px;
+        }
+        .lp-heading {
+          font-size: 18px; font-weight: 700; letter-spacing: 0.02em;
+          color: #e9edef; margin-bottom: 24px; text-align: center;
+          max-width: 420px;
+        }
+        .lp-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
+          max-width: 480px; width: 100%;
+          margin-bottom: 24px;
+        }
+        @media (min-width: 640px) {
+          .lp-grid { grid-template-columns: repeat(3, 1fr); max-width: 640px; }
+        }
+        .lp-pill {
+          padding: 12px 14px;
+          background: #1e2830;
+          border: 1.2px solid rgba(255,255,255,0.06);
+          border-radius: 999px;
+          color: #e9edef;
+          font-size: 13px; font-weight: 600;
+          letter-spacing: 0.02em;
+          cursor: pointer;
+          text-align: center;
+          transition: all 0.18s;
+          font-family: inherit;
+        }
+        .lp-pill:hover {
+          background: #2a3942;
+          border-color: rgba(0,168,132,0.4);
+          transform: translateY(-1px);
+        }
+        .lp-pill:active { transform: translateY(0) scale(0.98); }
+        .lp-skip {
+          background: transparent; border: none;
+          color: #8696a0; font-size: 12.5px;
+          letter-spacing: 0.03em; cursor: pointer;
+          padding: 8px 12px; font-family: inherit;
+          transition: color 0.18s;
+        }
+        .lp-skip:hover { color: #e9edef; }
+      `}</style>
+
+      <div className="lp-logo">H Y E Z E N</div>
+      <div className="lp-heading">{s.chooseYourLanguage || 'Choose your language'}</div>
+
+      <div className="lp-grid">
+        {SUPPORTED_LANGS.map(l => (
+          <button key={l.code} className="lp-pill" onClick={() => onPick(l.code)}>
+            {l.native}
+          </button>
+        ))}
+      </div>
+
+      <button className="lp-skip" onClick={() => onPick('en')}>
+        {s.continueInEnglish || 'Continue in English'}
+      </button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 //  APP
 // ═══════════════════════════════════════════════════════════
 export default function App() {
   const [backendReady, setBackendReady] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('Starting HYEZEN...');
+
+  // UI language
+  const [uiLang, setUiLang] = useState(() => {
+    try { return localStorage.getItem('hx_ui_lang') || null; } catch { return null; }
+  });
+
+  const t = useMemo(() => (uiLang ? getStrings(uiLang) : STRINGS.en), [uiLang]);
+
+  function pickUiLang(code) {
+    try { localStorage.setItem('hx_ui_lang', code); } catch {}
+    setUiLang(code);
+  }
 
   const [activeTab, setActiveTab] = useState('realistic');
   const [text, setText] = useState('');
@@ -321,7 +428,7 @@ export default function App() {
     { id: 'studio', name: 'Studio' },
   ];
 
-  // ── Boot ─────────────────────────────────────────────
+  // ── Boot ──
   useEffect(() => { wakeBackend(); }, []);
 
   async function wakeBackend() {
@@ -357,13 +464,14 @@ export default function App() {
 
   useEffect(() => {
     if (!backendReady) return;
+    if (!uiLang) return; // wait until language is picked
     fetchVoices(activeTab);
     fetchModes();
     if (activeTab !== 'studio') {
-      setChat([{ type: 'bot', text: `Welcome to ${themes[activeTab].name}. Tap the VOICE pill above to pick a voice.` }]);
+      setChat([{ type: 'bot', text: interpolate(t.welcomeTo, { engine: themes[activeTab].name }) }]);
     }
     setVoiceId('');
-  }, [activeTab, backendReady]);
+  }, [activeTab, backendReady, uiLang]); // eslint-disable-line
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat]);
 
@@ -404,7 +512,7 @@ export default function App() {
   useEffect(() => { LS.set('presetPopupOn', presetPopupOn); }, [presetPopupOn]);
   useEffect(() => { LS.set('autoDownload', autoDownload); }, [autoDownload]);
 
-  // ── Preset popup trigger ─────────────────────────────
+  // Preset popup trigger
   useEffect(() => {
     if (!presetPopupOn) return;
     if (!userTouched) return;
@@ -416,7 +524,7 @@ export default function App() {
     const signature = `${voice}|${selectedMode}|${translateOn ? targetLang : 'off'}`;
     if (lastPromptedKeyRef.current === signature) return;
 
-    const t = setTimeout(() => {
+    const tmr = setTimeout(() => {
       lastPromptedKeyRef.current = signature;
       setPresetPrompt({
         voiceName: voice,
@@ -425,7 +533,7 @@ export default function App() {
         targetLang,
       });
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(tmr);
   }, [
     voice, selectedMode, translateOn, targetLang,
     presetPopupOn, userTouched, activeTab,
@@ -451,7 +559,6 @@ export default function App() {
     } catch (err) { console.error('Fetch modes error:', err); }
   }
 
-  // Favorites
   function beginLongPress(voiceName) {
     longPressFiredRef.current = false;
     if (longPressRef.current) clearTimeout(longPressRef.current);
@@ -681,7 +788,7 @@ export default function App() {
 
       await finalizeTTS({ originalText: currentText, spokenText, didTranslate, useVoice: voice });
     } catch (err) {
-      setChat(prev => [...prev, { type: 'bot', text: 'Error: ' + err.message }]);
+      setChat(prev => [...prev, { type: 'bot', text: interpolate(t.errorGeneric, { message: err.message }) }]);
       setLoading(false);
     }
   }
@@ -699,7 +806,7 @@ export default function App() {
         u.rate = 1.1;
         u.pitch = useVoice === 'female' ? 1.3 : 0.8;
         speechSynthesis.speak(u);
-        setChat(prev => [...prev, { type: 'bot', text: `${useVoice === 'female' ? 'Female' : 'Male'} robotic voice played.` }]);
+        setChat(prev => [...prev, { type: 'bot', text: useVoice === 'female' ? 'Female robotic voice played.' : 'Male robotic voice played.' }]);
         setLoading(false);
         return;
       }
@@ -730,7 +837,7 @@ export default function App() {
         thenDownload: autoDownload,
       });
     } catch (err) {
-      setChat(prev => [...prev, { type: 'bot', text: 'Error: ' + err.message }]);
+      setChat(prev => [...prev, { type: 'bot', text: interpolate(t.errorGeneric, { message: err.message }) }]);
     }
     setLoading(false);
   }
@@ -764,7 +871,7 @@ export default function App() {
     setVoicePrompt(null);
 
     if (action === 'cancel') {
-      setChat(prev => [...prev, { type: 'bot', text: 'Cancelled.' }]);
+      setChat(prev => [...prev, { type: 'bot', text: t.cancelled }]);
       return;
     }
 
@@ -805,8 +912,8 @@ export default function App() {
         let didTranslate = false;
         if (batchTranslate && batchLang !== 'en') {
           try {
-            const t = await translateText(line, batchLang, 'en');
-            if (t && t !== line) { spokenText = t; didTranslate = true; }
+            const tr = await translateText(line, batchLang, 'en');
+            if (tr && tr !== line) { spokenText = tr; didTranslate = true; }
           } catch {}
         }
         const result = await generateAudio({ spokenText, useVoice: batchVoice });
@@ -843,7 +950,7 @@ export default function App() {
       setTimeout(() => URL.revokeObjectURL(url), 8000);
       setChat(prev => [...prev, {
         type: 'bot',
-        text: `Batch complete: ${successful.length} of ${lines.length} clips saved to library, ZIP downloaded.`,
+        text: interpolate(t.batchComplete, { done: successful.length, total: lines.length }),
       }]);
     }
   }
@@ -872,13 +979,13 @@ export default function App() {
           setLoading(false);
           if (data.success) {
             setVoiceId(data.voice_id);
-            setChat(prev => [...prev, { type: 'bot', text: 'Voice cloned. Type text below to speak in your voice.' }]);
+            setChat(prev => [...prev, { type: 'bot', text: t.voiceCloneReady }]);
           } else {
-            setChat(prev => [...prev, { type: 'bot', text: 'Clone failed: ' + data.error }]);
+            setChat(prev => [...prev, { type: 'bot', text: interpolate(t.errorGeneric, { message: data.error }) }]);
           }
         } catch (err) {
           setLoading(false);
-          setChat(prev => [...prev, { type: 'bot', text: 'Clone error: ' + err.message }]);
+          setChat(prev => [...prev, { type: 'bot', text: interpolate(t.errorGeneric, { message: err.message }) }]);
         }
         stream.getTracks().forEach(track => track.stop());
       };
@@ -888,7 +995,7 @@ export default function App() {
         if (mediaRecorder.current && mediaRecorder.current.state === 'recording') stopRecording();
       }, 10000);
     } catch {
-      alert('Mic permission denied.');
+      alert(t.micPermissionDenied);
       setRecording(false);
     }
   }
@@ -985,6 +1092,13 @@ export default function App() {
         <style>{`@keyframes hx-spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  FIRST-LAUNCH LANGUAGE PICKER
+  // ═══════════════════════════════════════════════════════
+  if (!uiLang) {
+    return <LangPicker onPick={pickUiLang} />;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -1114,6 +1228,11 @@ export default function App() {
         .hx-text-toggle { display: inline-flex; background: rgba(0,0,0,0.3); border-radius: 999px; padding: 2px; gap: 2px; }
         .hx-text-toggle button { padding: 3px 10px; border: none; background: transparent; color: #8696a0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; cursor: pointer; border-radius: 999px; transition: all 0.18s; }
         .hx-text-toggle button.active { background: rgba(0,168,132,0.2); color: #00a884; }
+
+        .hx-settings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 20px; }
+        .hx-settings-pill { padding: 10px 12px; background: #1e2830; border: 1.3px solid transparent; border-radius: 999px; color: #e9edef; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all 0.18s; text-align: center; font-family: inherit; }
+        .hx-settings-pill:hover { background: #2a3942; }
+        .hx-settings-pill.active { border-color: #00a884; background: rgba(0,168,132,0.15); color: #00a884; box-shadow: 0 0 10px rgba(0,168,132,0.35); }
       `}</style>
 
       {/* ══ HEADER ══ */}
@@ -1129,9 +1248,9 @@ export default function App() {
         {!isStudio && (
           <>
             <div className="hx-labels">
-              <span className="hx-label">VOICE</span>
-              <span className="hx-label">MODES</span>
-              <span className="hx-label">TRANSLATION</span>
+              <span className="hx-label">{t.voice}</span>
+              <span className="hx-label">{t.modes}</span>
+              <span className="hx-label">{t.translation}</span>
             </div>
 
             <div className="hx-pills-row">
@@ -1161,7 +1280,7 @@ export default function App() {
                   <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
                 </svg>
                 <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => { setShowTranslateModal(true); setUserTouched(true); }}>
-                  {translateOn ? (LANG_META[targetLang]?.label.toUpperCase() || 'OFF') : 'OFF'}
+                  {translateOn ? (LANG_META[targetLang]?.label.toUpperCase() || t.off) : t.off}
                 </div>
               </div>
             </div>
@@ -1172,9 +1291,9 @@ export default function App() {
       {/* ══ NAV ══ */}
       <div className="hx-nav-wrap">
         <div className={`hx-nav ${!navVisible ? 'hidden' : ''}`}>
-          {tabs.map(t => (
-            <button key={t.id} className={`hx-nav-tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>
-              {t.name}
+          {tabs.map(tb => (
+            <button key={tb.id} className={`hx-nav-tab ${activeTab === tb.id ? 'active' : ''}`} onClick={() => setActiveTab(tb.id)}>
+              {tb.name}
             </button>
           ))}
         </div>
@@ -1195,19 +1314,20 @@ export default function App() {
           triggerDownload={triggerDownload}
           voiceLabel={voiceLabel}
           prettyMode={prettyMode}
+          t={t}
         />
       ) : (
         <>
-          {/* ══ CHAT ══ */}
+          {/* Chat */}
           <div onScroll={handleChatScroll} style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', background: '#0a0a0f' }}>
             {chat.map((msg, i) => (
-              <ChatBubble key={i} msg={msg} onCopy={copyToClipboard} onDownload={triggerDownload} />
+              <ChatBubble key={i} msg={msg} onCopy={copyToClipboard} onDownload={triggerDownload} t={t} />
             ))}
-            {loading && <div style={{ textAlign: 'center', color: '#888', fontSize: '12.5px', marginTop: '10px', letterSpacing: '0.05em' }}>Generating voice...</div>}
+            {loading && <div style={{ textAlign: 'center', color: '#888', fontSize: '12.5px', marginTop: '10px', letterSpacing: '0.05em' }}>{t.generatingVoice}</div>}
             <div ref={chatEndRef} />
           </div>
 
-          {/* ══ INPUT ══ */}
+          {/* Input */}
           <div style={{ background: 'rgba(20,20,30,0.85)', backdropFilter: 'blur(20px)', padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             {activeTab === 'elevenlabs' && !voiceId ? (
               <button
@@ -1227,16 +1347,16 @@ export default function App() {
                   userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
                 }}
               >
-                {recording ? 'Recording — release to stop' : 'Hold to record 10s'}
+                {recording ? t.recordingRelease : t.holdToRecord}
               </button>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {(activeTab === 'elevenlabs' && voiceId) || translateOn ? (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '4px', gap: '10px', flexWrap: 'wrap' }}>
-                    {activeTab === 'elevenlabs' && voiceId && <span style={{ fontSize: '11.5px', color: '#0f0', letterSpacing: '0.03em' }}>Voice ready</span>}
+                    {activeTab === 'elevenlabs' && voiceId && <span style={{ fontSize: '11.5px', color: '#0f0', letterSpacing: '0.03em' }}>{t.voiceReady}</span>}
                     {translateOn && (
                       <span style={{ fontSize: '11.5px', color: '#3b82f6', letterSpacing: '0.03em' }}>
-                        Speaking in {LANG_META[targetLang]?.label}
+                        {interpolate(t.speakingIn, { lang: LANG_META[targetLang]?.label || '' })}
                       </span>
                     )}
                   </div>
@@ -1247,7 +1367,7 @@ export default function App() {
                     value={text}
                     onChange={e => setText(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && sendText()}
-                    placeholder={activeTab === 'elevenlabs' && voiceId ? 'Type text to speak in your voice...' : 'Type text to generate voice...'}
+                    placeholder={activeTab === 'elevenlabs' && voiceId ? t.typeToSpeakInYourVoice : t.typeTextToGenerate}
                     style={{
                       flex: 1, padding: '14px 16px',
                       background: 'rgba(255,255,255,0.08)',
@@ -1276,24 +1396,20 @@ export default function App() {
         <div className="hx-modal-backdrop" onClick={() => setShowMenuModal(false)}>
           <div className="hx-modal hx-modal-wide" onClick={e => e.stopPropagation()}>
             <div className="hx-menu-tabs">
-              <button className={menuTab === 'library' ? 'active' : ''} onClick={() => setMenuTab('library')}>Library</button>
-              <button className={menuTab === 'presets' ? 'active' : ''} onClick={() => setMenuTab('presets')}>Presets</button>
-              <button className={menuTab === 'batch' ? 'active' : ''} onClick={() => setMenuTab('batch')}>Batch</button>
+              <button className={menuTab === 'library' ? 'active' : ''} onClick={() => setMenuTab('library')}>{t.library}</button>
+              <button className={menuTab === 'presets' ? 'active' : ''} onClick={() => setMenuTab('presets')}>{t.presets}</button>
+              <button className={menuTab === 'batch' ? 'active' : ''} onClick={() => setMenuTab('batch')}>{t.batch}</button>
+              <button className={menuTab === 'settings' ? 'active' : ''} onClick={() => setMenuTab('settings')}>{t.settings}</button>
             </div>
 
             {menuTab === 'library' && (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '10px', flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: '11px', color: '#8696a0', letterSpacing: '0.05em' }}>
-                    {library.length} {library.length === 1 ? 'clip' : 'clips'}
-                  </div>
-                  <button className={`hx-toggle ${autoDownload ? 'on' : ''}`} onClick={() => setAutoDownload(!autoDownload)}>
-                    Auto-download: {autoDownload ? 'ON' : 'OFF'}
-                  </button>
+                <div style={{ fontSize: '11px', color: '#8696a0', marginBottom: '14px', letterSpacing: '0.05em' }}>
+                  {interpolate(library.length === 1 ? t.clipsCount : t.clipsCountPlural, { n: library.length })}
                 </div>
 
                 {library.length === 0 ? (
-                  <p style={{ fontSize: '13px', color: '#8696a0' }}>No saved clips yet. Generate a voice and it appears here.</p>
+                  <p style={{ fontSize: '13px', color: '#8696a0' }}>{t.noSavedClips}</p>
                 ) : (
                   libraryGroups.map(([label, items]) => (
                     <div key={label} className="hx-group">
@@ -1304,13 +1420,13 @@ export default function App() {
                             <div className="hx-lib-info" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               <input className="hx-input" value={renameDraft.displayName}
                                 onChange={e => setRenameDraft({ ...renameDraft, displayName: e.target.value })}
-                                placeholder="Display name" autoFocus />
+                                placeholder={t.displayName} autoFocus />
                               <input className="hx-input" value={renameDraft.filename}
                                 onChange={e => setRenameDraft({ ...renameDraft, filename: e.target.value })}
                                 placeholder="filename.mp3" />
                               <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                <button className="hx-modal-btn primary" style={{ flex: 1, padding: '8px' }} onClick={() => commitRename(item.id)}>Save</button>
-                                <button className="hx-modal-btn" style={{ flex: 1, padding: '8px' }} onClick={() => setRenamingId(null)}>Cancel</button>
+                                <button className="hx-modal-btn primary" style={{ flex: 1, padding: '8px' }} onClick={() => commitRename(item.id)}>{t.save}</button>
+                                <button className="hx-modal-btn" style={{ flex: 1, padding: '8px' }} onClick={() => setRenamingId(null)}>{t.cancel}</button>
                               </div>
                             </div>
                           ) : (
@@ -1323,10 +1439,10 @@ export default function App() {
                                   {' · '}{(item.size / 1024).toFixed(0)} KB
                                 </div>
                               </div>
-                              <button className="hx-icon-btn" onClick={() => playLibraryItem(item)}>Play</button>
-                              <button className="hx-icon-btn" onClick={() => startRename(item)}>Edit</button>
-                              <button className="hx-icon-btn" onClick={() => downloadLibraryItem(item)}>Save</button>
-                              <button className="hx-icon-btn danger" onClick={() => deleteLibraryItem(item.id)}>Del</button>
+                              <button className="hx-icon-btn" onClick={() => playLibraryItem(item)}>{t.play}</button>
+                              <button className="hx-icon-btn" onClick={() => startRename(item)}>{t.edit}</button>
+                              <button className="hx-icon-btn" onClick={() => downloadLibraryItem(item)}>{t.save}</button>
+                              <button className="hx-icon-btn danger" onClick={() => deleteLibraryItem(item.id)}>{t.delete}</button>
                             </>
                           )}
                         </div>
@@ -1339,42 +1455,37 @@ export default function App() {
 
             {menuTab === 'presets' && (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '10px', flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: '11px', color: '#8696a0', letterSpacing: '0.05em' }}>
-                    {presets.length} {presets.length === 1 ? 'preset' : 'presets'}
-                  </div>
-                  <button className={`hx-toggle ${presetPopupOn ? 'on' : ''}`} onClick={() => setPresetPopupOn(!presetPopupOn)}>
-                    Popup on pill change: {presetPopupOn ? 'ON' : 'OFF'}
-                  </button>
+                <div style={{ fontSize: '11px', color: '#8696a0', marginBottom: '14px', letterSpacing: '0.05em' }}>
+                  {interpolate(presets.length === 1 ? t.presetsCount : t.presetsCountPlural, { n: presets.length })}
                 </div>
 
                 <div style={{ marginBottom: '16px' }}>
-                  <label className="hx-label-sm">Save current setup</label>
+                  <label className="hx-label-sm">{t.saveCurrentSetup}</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input className="hx-input" value={presetName}
                       onChange={e => setPresetName(e.target.value)}
-                      placeholder="Preset name (e.g. Narrator FR)"
+                      placeholder={t.presetNamePlaceholder}
                       onKeyDown={e => e.key === 'Enter' && savePresetManual()} />
-                    <button className="hx-modal-btn primary" style={{ flex: '0 0 auto', minWidth: '80px' }} onClick={savePresetManual}>Save</button>
+                    <button className="hx-modal-btn primary" style={{ flex: '0 0 auto', minWidth: '80px' }} onClick={savePresetManual}>{t.save}</button>
                   </div>
                   <div style={{ fontSize: '11px', color: '#8696a0', marginTop: '6px', letterSpacing: '0.03em' }}>
-                    Captures: {comboSummary(voices, voice, selectedMode, translateOn, targetLang)}
+                    {interpolate(t.captures, { summary: comboSummary(voices, voice, selectedMode, translateOn, targetLang) })}
                   </div>
                 </div>
 
                 {presets.length === 0 ? (
-                  <p style={{ fontSize: '13px', color: '#8696a0' }}>No presets yet.</p>
+                  <p style={{ fontSize: '13px', color: '#8696a0' }}>{t.noPresetsYet}</p>
                 ) : (
                   presets.map(p => (
                     <div key={p.id} className="hx-preset-row">
                       <div className="hx-preset-info">
                         <div className="hx-preset-name">{p.name}</div>
                         <div className="hx-preset-meta">
-                          {voiceLabel(voices, p.voice)} · {prettyMode(p.mode)} · {p.translateOn ? (LANG_META[p.targetLang]?.label || 'Off') : 'No translation'}
+                          {voiceLabel(voices, p.voice)} · {prettyMode(p.mode)} · {p.translateOn ? (LANG_META[p.targetLang]?.label || t.off) : t.noTranslation}
                         </div>
                       </div>
-                      <button className="hx-icon-btn" onClick={() => { applyPreset(p); setShowMenuModal(false); }}>Load</button>
-                      <button className="hx-icon-btn danger" onClick={() => deletePreset(p.id)}>Del</button>
+                      <button className="hx-icon-btn" onClick={() => { applyPreset(p); setShowMenuModal(false); }}>{t.load}</button>
+                      <button className="hx-icon-btn danger" onClick={() => deletePreset(p.id)}>{t.delete}</button>
                     </div>
                   ))
                 )}
@@ -1383,28 +1494,26 @@ export default function App() {
 
             {menuTab === 'batch' && (
               <>
-                <p style={{ fontSize: '12px', color: '#8696a0', marginBottom: '14px' }}>
-                  One line = one audio clip. Uses current voice/mode/translation, or a preset.
-                </p>
+                <p style={{ fontSize: '12px', color: '#8696a0', marginBottom: '14px' }}>{t.batchHelp}</p>
 
                 <div style={{ marginBottom: '12px' }}>
-                  <label className="hx-label-sm">Preset (optional)</label>
+                  <label className="hx-label-sm">{t.presetOptional}</label>
                   <select className="hx-input" value={batchPresetId} onChange={e => setBatchPresetId(e.target.value)}>
-                    <option value="">— Use current settings —</option>
+                    <option value="">{t.useCurrentSettings}</option>
                     {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
 
                 <div style={{ marginBottom: '12px' }}>
-                  <label className="hx-label-sm">Filename prefix</label>
+                  <label className="hx-label-sm">{t.filenamePrefix}</label>
                   <input className="hx-input" value={batchPrefix} onChange={e => setBatchPrefix(e.target.value)} placeholder="clip" />
                   <div style={{ fontSize: '10.5px', color: '#8696a0', marginTop: '5px' }}>
-                    Files: {batchPrefix || 'clip'}_001.mp3, {batchPrefix || 'clip'}_002.mp3, …
+                    {interpolate(t.filesWillBe, { prefix: batchPrefix || 'clip' })}
                   </div>
                 </div>
 
                 <div style={{ marginBottom: '12px' }}>
-                  <label className="hx-label-sm">Lines</label>
+                  <label className="hx-label-sm">{t.lines}</label>
                   <textarea className="hx-input" value={batchText} onChange={e => setBatchText(e.target.value)}
                     placeholder={'Hello world\nSecond clip\nThird one'} rows={6}
                     style={{ resize: 'vertical', fontFamily: 'inherit' }} />
@@ -1413,13 +1522,13 @@ export default function App() {
                 {batchRunning ? (
                   <>
                     <div style={{ fontSize: '12px', color: '#8696a0', marginBottom: '6px' }}>
-                      Generating {batchProgress.done} / {batchProgress.total}…
+                      {interpolate(t.generatingProgress, { done: batchProgress.done, total: batchProgress.total })}
                     </div>
                     <div className="hx-progress">
                       <div className="hx-progress-bar" style={{ width: `${(batchProgress.done / Math.max(1, batchProgress.total)) * 100}%` }} />
                     </div>
                     <div className="hx-modal-actions">
-                      <button className="hx-modal-btn danger" onClick={cancelBatch}>Cancel</button>
+                      <button className="hx-modal-btn danger" onClick={cancelBatch}>{t.cancel}</button>
                     </div>
                   </>
                 ) : (
@@ -1427,10 +1536,46 @@ export default function App() {
                     <button className="hx-modal-btn primary" onClick={runBatch}
                       disabled={!batchText.trim()}
                       style={{ opacity: batchText.trim() ? 1 : 0.5 }}>
-                      Generate batch
+                      {t.generateBatch}
                     </button>
                   </div>
                 )}
+              </>
+            )}
+
+            {menuTab === 'settings' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <label className="hx-label-sm">{t.uiLanguage}</label>
+                  <div className="hx-settings-grid">
+                    {SUPPORTED_LANGS.map(l => (
+                      <button
+                        key={l.code}
+                        className={`hx-settings-pill ${uiLang === l.code ? 'active' : ''}`}
+                        onClick={() => pickUiLang(l.code)}
+                      >
+                        {l.native}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#8696a0', letterSpacing: '0.03em', lineHeight: 1.5 }}>
+                    {t.uiLanguageHelp}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12.5px', color: '#e9edef', fontWeight: 600 }}>{t.autoDownload}</span>
+                  <button className={`hx-toggle ${autoDownload ? 'on' : ''}`} onClick={() => setAutoDownload(!autoDownload)}>
+                    {autoDownload ? t.on : t.offLower}
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12.5px', color: '#e9edef', fontWeight: 600 }}>{t.popupOnPillChange}</span>
+                  <button className={`hx-toggle ${presetPopupOn ? 'on' : ''}`} onClick={() => setPresetPopupOn(!presetPopupOn)}>
+                    {presetPopupOn ? t.on : t.offLower}
+                  </button>
+                </div>
               </>
             )}
           </div>
@@ -1442,31 +1587,31 @@ export default function App() {
         <div className="hx-modal-backdrop" onClick={() => setShowVoiceModal(false)}>
           <div className="hx-modal" onClick={e => e.stopPropagation()}>
             <div className="hx-modal-head">
-              <h3>Choose voice</h3>
+              <h3>{t.chooseVoice}</h3>
               {voices.length > 0 && activeTab !== 'elevenlabs' && activeTab !== 'robotic' && (
                 <div className="hx-sort-toggle">
-                  <button className={voiceSortMode === 'continent' ? 'active' : ''} onClick={() => setVoiceSortMode('continent')}>Continent</button>
-                  <button className={voiceSortMode === 'alpha' ? 'active' : ''} onClick={() => setVoiceSortMode('alpha')}>A–Z</button>
+                  <button className={voiceSortMode === 'continent' ? 'active' : ''} onClick={() => setVoiceSortMode('continent')}>{t.continent}</button>
+                  <button className={voiceSortMode === 'alpha' ? 'active' : ''} onClick={() => setVoiceSortMode('alpha')}>{t.aToZ}</button>
                 </div>
               )}
             </div>
 
             <div style={{ fontSize: '10.5px', color: '#8696a0', marginBottom: '12px', letterSpacing: '0.05em' }}>
-              Tap to preview · Hold 3s to favorite
+              {t.tapToPreviewHoldToFav}
             </div>
 
             {activeTab === 'elevenlabs' ? (
               <p style={{ fontSize: '13px', color: '#8696a0' }}>
-                {voiceId ? 'Voice cloned. Speaking in your cloned voice.' : 'Record a sample first — hold the button below.'}
+                {voiceId ? t.voiceCloneReady : t.voiceCloneRecordFirst}
               </p>
             ) : voices.length === 0 ? (
-              <p style={{ fontSize: '13px', color: '#8696a0' }}>No voices available.</p>
+              <p style={{ fontSize: '13px', color: '#8696a0' }}>{t.noVoicesAvailable}</p>
             ) : (
               voiceGroups.map((group, gi) => (
                 <div key={gi} className="hx-group">
                   {group.continent && (
                     <div className={`hx-group-title ${group.continent === 'Favorites' ? 'fav' : ''}`}>
-                      {group.continent}
+                      {group.continent === 'Favorites' ? t.favorites : group.continent}
                     </div>
                   )}
                   <div className="hx-modal-grid">
@@ -1499,9 +1644,9 @@ export default function App() {
       {showModeModal && (
         <div className="hx-modal-backdrop" onClick={() => setShowModeModal(false)}>
           <div className="hx-modal" onClick={e => e.stopPropagation()}>
-            <div className="hx-modal-head"><h3>Narration mode</h3></div>
+            <div className="hx-modal-head"><h3>{t.narrationMode}</h3></div>
             {modes.length === 0 ? (
-              <p style={{ fontSize: '13px', color: '#8696a0' }}>No modes available.</p>
+              <p style={{ fontSize: '13px', color: '#8696a0' }}>{t.noModesAvailable}</p>
             ) : (
               <div className="hx-modal-grid">
                 {modes.map(m => (
@@ -1521,15 +1666,15 @@ export default function App() {
         <div className="hx-modal-backdrop" onClick={() => setShowTranslateModal(false)}>
           <div className="hx-modal" onClick={e => e.stopPropagation()}>
             <div className="hx-modal-head">
-              <h3>Speak in</h3>
+              <h3>{t.speakIn}</h3>
               <div className="hx-sort-toggle">
-                <button className={translateSortMode === 'continent' ? 'active' : ''} onClick={() => setTranslateSortMode('continent')}>Continent</button>
-                <button className={translateSortMode === 'alpha' ? 'active' : ''} onClick={() => setTranslateSortMode('alpha')}>A–Z</button>
+                <button className={translateSortMode === 'continent' ? 'active' : ''} onClick={() => setTranslateSortMode('continent')}>{t.continent}</button>
+                <button className={translateSortMode === 'alpha' ? 'active' : ''} onClick={() => setTranslateSortMode('alpha')}>{t.aToZ}</button>
               </div>
             </div>
             <div style={{ marginBottom: '14px' }}>
               <button className={`hx-modal-pill off ${!translateOn ? 'active' : ''}`}
-                onClick={() => { setTranslateOn(false); setShowTranslateModal(false); }}>Off</button>
+                onClick={() => { setTranslateOn(false); setShowTranslateModal(false); }}>{t.off}</button>
             </div>
             {translateGroups.map((group, gi) => (
               <div key={gi} className="hx-group">
@@ -1553,20 +1698,22 @@ export default function App() {
       {voicePrompt && (
         <div className="hx-modal-backdrop" onClick={() => resolveVoicePrompt('cancel')}>
           <div className="hx-modal" onClick={e => e.stopPropagation()}>
-            <h3>Voice match</h3>
+            <h3>{t.voiceMatchTitle}</h3>
             <p>
-              Speaking <strong>{LANG_META[targetLang]?.label}</strong> with an English voice
-              (<strong>{voicePrompt.currentVoiceLabel}</strong>).<br /><br />
-              Switch to the matching voice <strong>{voicePrompt.suggestedVoiceLabel}</strong>?
+              {interpolate(t.voiceMatchBody, {
+                lang: LANG_META[targetLang]?.label || '',
+                currentVoice: voicePrompt.currentVoiceLabel,
+                suggestedVoice: voicePrompt.suggestedVoiceLabel,
+              })}
             </p>
             <div className="hx-modal-actions">
               <button className="hx-modal-btn primary" onClick={() => resolveVoicePrompt('suggested')}>
-                Use {voicePrompt.suggestedVoiceLabel}
+                {interpolate(t.voiceMatchUse, { voice: voicePrompt.suggestedVoiceLabel })}
               </button>
               <button className="hx-modal-btn" onClick={() => resolveVoicePrompt('keep')}>
-                Keep {voicePrompt.currentVoiceLabel}
+                {interpolate(t.voiceMatchKeep, { voice: voicePrompt.currentVoiceLabel })}
               </button>
-              <button className="hx-modal-btn" onClick={() => resolveVoicePrompt('cancel')}>Cancel</button>
+              <button className="hx-modal-btn" onClick={() => resolveVoicePrompt('cancel')}>{t.cancel}</button>
             </div>
           </div>
         </div>
@@ -1574,7 +1721,7 @@ export default function App() {
 
       {/* ══ NAME PROMPT ══ */}
       {namePrompt && (
-        <NamePromptModal prompt={namePrompt} onResolve={resolveNamePrompt} />
+        <NamePromptModal prompt={namePrompt} onResolve={resolveNamePrompt} t={t} />
       )}
 
       {/* ══ PRESET PROMPT ══ */}
@@ -1585,6 +1732,7 @@ export default function App() {
           onSave={(name) => savePresetFromPrompt(name)}
           onNotNow={() => setPresetPrompt(null)}
           onNever={() => { setPresetPopupOn(false); setPresetPrompt(null); stampCurrentCombo(); }}
+          t={t}
         />
       )}
     </div>
@@ -1594,7 +1742,7 @@ export default function App() {
 // ═══════════════════════════════════════════════════════════
 //  CHAT BUBBLE
 // ═══════════════════════════════════════════════════════════
-function ChatBubble({ msg, onCopy, onDownload }) {
+function ChatBubble({ msg, onCopy, onDownload, t }) {
   const [showTranslated, setShowTranslated] = useState(true);
   const [copied, setCopied] = useState(false);
 
@@ -1617,7 +1765,7 @@ function ChatBubble({ msg, onCopy, onDownload }) {
           <div>{msg.text}</div>
           <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '6px' }}>
             <button className={`hx-copy-btn ${copied ? 'copied' : ''}`} onClick={() => doCopy(msg.text)}>
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t.copied : t.copy}
             </button>
           </div>
         </div>
@@ -1647,15 +1795,15 @@ function ChatBubble({ msg, onCopy, onDownload }) {
             {hasTranslation && (
               <div style={{ marginBottom: '8px' }}>
                 <div className="hx-text-toggle">
-                  <button className={!showTranslated ? 'active' : ''} onClick={() => setShowTranslated(false)}>Original</button>
-                  <button className={showTranslated ? 'active' : ''} onClick={() => setShowTranslated(true)}>Translated</button>
+                  <button className={!showTranslated ? 'active' : ''} onClick={() => setShowTranslated(false)}>{t.original}</button>
+                  <button className={showTranslated ? 'active' : ''} onClick={() => setShowTranslated(true)}>{t.translated}</button>
                 </div>
               </div>
             )}
             <div>{displayedText}</div>
             <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
               <button className={`hx-copy-btn ${copied ? 'copied' : ''}`} onClick={() => doCopy(displayedText)}>
-                {copied ? 'Copied' : 'Copy'}
+                {copied ? t.copied : t.copy}
               </button>
             </div>
           </div>
@@ -1669,7 +1817,7 @@ function ChatBubble({ msg, onCopy, onDownload }) {
                 padding: '6px 12px', background: 'rgba(255,255,255,0.15)',
                 border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px',
                 color: '#fff', fontSize: '12px', cursor: 'pointer', fontWeight: '600',
-              }}>Download</button>
+              }}>{t.download}</button>
             </div>
           </div>
         )}
@@ -1681,32 +1829,30 @@ function ChatBubble({ msg, onCopy, onDownload }) {
 // ═══════════════════════════════════════════════════════════
 //  NAME PROMPT
 // ═══════════════════════════════════════════════════════════
-function NamePromptModal({ prompt, onResolve }) {
+function NamePromptModal({ prompt, onResolve, t }) {
   const [displayName, setDisplayName] = useState(prompt.defaultDisplay || '');
   const [filename, setFilename] = useState(prompt.defaultFilename || '');
 
   return (
     <div className="hx-modal-backdrop" onClick={() => onResolve({ skip: true })}>
       <div className="hx-modal" onClick={e => e.stopPropagation()}>
-        <h3>Save clip</h3>
-        <p style={{ fontSize: '13px', color: '#8696a0', marginBottom: '16px' }}>
-          Give this clip a name, or skip to leave it unnamed.
-        </p>
+        <h3>{t.saveClip}</h3>
+        <p style={{ fontSize: '13px', color: '#8696a0', marginBottom: '16px' }}>{t.saveClipBody}</p>
         <div style={{ marginBottom: '12px' }}>
-          <label className="hx-label-sm">Display name</label>
+          <label className="hx-label-sm">{t.displayName}</label>
           <input className="hx-input" value={displayName}
             onChange={e => setDisplayName(e.target.value)}
-            placeholder="What shows in the library" autoFocus />
+            placeholder={t.displayNamePlaceholder} autoFocus />
         </div>
         <div style={{ marginBottom: '4px' }}>
-          <label className="hx-label-sm">Filename</label>
+          <label className="hx-label-sm">{t.filename}</label>
           <input className="hx-input" value={filename}
             onChange={e => setFilename(e.target.value)}
-            placeholder="filename.mp3" />
+            placeholder={t.filenamePlaceholder} />
         </div>
         <div className="hx-modal-actions">
-          <button className="hx-modal-btn primary" onClick={() => onResolve({ displayName, filename })}>Save</button>
-          <button className="hx-modal-btn" onClick={() => onResolve({ skip: true })}>Skip</button>
+          <button className="hx-modal-btn primary" onClick={() => onResolve({ displayName, filename })}>{t.save}</button>
+          <button className="hx-modal-btn" onClick={() => onResolve({ skip: true })}>{t.skip}</button>
         </div>
       </div>
     </div>
@@ -1716,31 +1862,29 @@ function NamePromptModal({ prompt, onResolve }) {
 // ═══════════════════════════════════════════════════════════
 //  PRESET PROMPT
 // ═══════════════════════════════════════════════════════════
-function PresetPromptModal({ prompt, voices, onSave, onNotNow, onNever }) {
+function PresetPromptModal({ prompt, voices, onSave, onNotNow, onNever, t }) {
   const [name, setName] = useState('');
   const summary = comboSummary(voices, prompt.voiceName, prompt.mode, prompt.translateOn, prompt.targetLang);
 
   return (
     <div className="hx-modal-backdrop" onClick={onNotNow}>
       <div className="hx-modal" onClick={e => e.stopPropagation()}>
-        <h3>Save this combo</h3>
-        <p style={{ fontSize: '13px', color: '#8696a0', marginBottom: '12px' }}>
-          Save these settings as a preset you can load later.
-        </p>
+        <h3>{t.saveThisCombo}</h3>
+        <p style={{ fontSize: '13px', color: '#8696a0', marginBottom: '12px' }}>{t.saveThisComboBody}</p>
         <div style={{ fontSize: '12px', color: '#e9edef', marginBottom: '14px', padding: '8px 10px', background: 'rgba(0,168,132,0.08)', border: '1px solid rgba(0,168,132,0.25)', borderRadius: '10px', letterSpacing: '0.03em' }}>
           {summary}
         </div>
         <div style={{ marginBottom: '6px' }}>
-          <label className="hx-label-sm">Preset name</label>
+          <label className="hx-label-sm">{t.presetName}</label>
           <input className="hx-input" value={name} onChange={e => setName(e.target.value)}
-            placeholder="e.g. Narrator FR"
+            placeholder={t.presetNameExample}
             onKeyDown={e => e.key === 'Enter' && onSave(name)}
             autoFocus />
         </div>
         <div className="hx-modal-actions">
-          <button className="hx-modal-btn primary" onClick={() => onSave(name)}>Save preset</button>
-          <button className="hx-modal-btn" onClick={onNotNow}>Not now</button>
-          <button className="hx-modal-btn danger" onClick={onNever}>Never show again</button>
+          <button className="hx-modal-btn primary" onClick={() => onSave(name)}>{t.savePreset}</button>
+          <button className="hx-modal-btn" onClick={onNotNow}>{t.notNow}</button>
+          <button className="hx-modal-btn danger" onClick={onNever}>{t.neverShowAgain}</button>
         </div>
       </div>
     </div>
