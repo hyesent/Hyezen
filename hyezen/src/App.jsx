@@ -83,7 +83,6 @@ async function translateWithGoogle(text, target, source = 'auto') {
   if (!out) throw new Error('google empty');
   return out;
 }
-
 async function translateWithMyMemory(text, target, source = 'en') {
   const src = source === 'auto' ? 'en' : source;
   const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${src}|${target}`;
@@ -93,7 +92,6 @@ async function translateWithMyMemory(text, target, source = 'en') {
   if (d.responseStatus === 200 && d.responseData?.translatedText) return d.responseData.translatedText;
   throw new Error('mymemory fail');
 }
-
 async function translateWithLibre(text, target, source = 'auto') {
   const r = await fetchWithTimeout('https://libretranslate.com/translate', {
     method: 'POST',
@@ -105,7 +103,6 @@ async function translateWithLibre(text, target, source = 'auto') {
   if (d.translatedText) return d.translatedText;
   throw new Error('libre fail');
 }
-
 async function translateText(text, target, source = 'auto') {
   if (!text || !target || target === 'en' || text.trim().length < 2) return text;
   const key = `${source}::${target}::${text}`;
@@ -128,65 +125,50 @@ async function translateText(text, target, source = 'auto') {
 // ═══════════════════════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════════════════════
-function voiceLocale(voiceName) {
-  if (!voiceName) return null;
-  const m = voiceName.match(/^([a-z]{2})-/);
-  return m ? m[1] : null;
-}
-function voiceRegion(voiceName) {
-  if (!voiceName) return null;
-  const m = voiceName.match(/^[a-z]{2}-([A-Z]{2})/);
-  return m ? m[1] : null;
-}
-function voiceLabel(voices, voiceName) {
-  const v = voices.find(x => x.name === voiceName);
-  return v ? v.label : (voiceName || 'NONE');
-}
-function pickVoiceForLang(voices, langCode) {
+function voiceLocale(v) { if (!v) return null; const m = v.match(/^([a-z]{2})-/); return m ? m[1] : null; }
+function voiceRegion(v) { if (!v) return null; const m = v.match(/^[a-z]{2}-([A-Z]{2})/); return m ? m[1] : null; }
+function voiceLabel(voices, name) { const v = voices.find(x => x.name === name); return v ? v.label : (name || 'NONE'); }
+function pickVoiceForLang(voices, lang) {
   if (!voices || voices.length === 0) return null;
-  const match = voices.find(v => voiceLocale(v.name) === langCode);
-  return match ? match.name : null;
+  const m = voices.find(v => voiceLocale(v.name) === lang);
+  return m ? m.name : null;
 }
 function prettyMode(m) { return (m || 'story').replace(/_/g, ' ').toUpperCase(); }
 
-function groupByContinent(items, getContinent) {
+function groupByContinent(items, getC) {
   const groups = {};
   for (const item of items) {
-    const c = getContinent(item) || 'Other';
+    const c = getC(item) || 'Other';
     if (!groups[c]) groups[c] = [];
     groups[c].push(item);
   }
   const ordered = [];
-  for (const c of CONTINENT_ORDER) {
-    if (groups[c]) ordered.push({ continent: c, items: groups[c] });
-  }
+  for (const c of CONTINENT_ORDER) if (groups[c]) ordered.push({ continent: c, items: groups[c] });
   if (groups.Other) ordered.push({ continent: 'Other', items: groups.Other });
   const known = new Set([...CONTINENT_ORDER, 'Other']);
-  for (const c of Object.keys(groups)) {
-    if (!known.has(c)) ordered.push({ continent: c, items: groups[c] });
-  }
+  for (const c of Object.keys(groups)) if (!known.has(c)) ordered.push({ continent: c, items: groups[c] });
   return ordered;
 }
 
-function sanitizeFilename(s) {
-  return (s || '').replace(/[\\/:*?"<>|]/g, '_').trim() || `clip_${Date.now()}`;
-}
-
-function defaultFilename(voiceLabel, mode, langCode) {
-  const v = (voiceLabel || 'voice').replace(/\s+/g, '_').toLowerCase();
+function sanitizeFilename(s) { return (s || '').replace(/[\\/:*?"<>|]/g, '_').trim() || `clip_${Date.now()}`; }
+function defaultFilename(vLabel, mode, lang) {
+  const v = (vLabel || 'voice').replace(/\s+/g, '_').toLowerCase();
   const m = (mode || 'story').toLowerCase();
   const ts = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '').slice(0, 14);
-  const lang = langCode && langCode !== 'en' ? `_${langCode}` : '';
-  return `${v}_${m}${lang}_${ts}.mp3`;
+  const l = lang && lang !== 'en' ? `_${lang}` : '';
+  return `${v}_${m}${l}_${ts}.mp3`;
+}
+function comboSummary(voices, voiceName, mode, translateOn, targetLang) {
+  const v = voiceLabel(voices, voiceName);
+  const m = prettyMode(mode);
+  const t = translateOn ? (LANG_META[targetLang]?.label || 'Off') : 'No translation';
+  return `${v} · ${m} · ${t}`;
 }
 
 // ═══════════════════════════════════════════════════════════
 //  INDEXEDDB — audio library
 // ═══════════════════════════════════════════════════════════
-const DB_NAME = 'hyezen';
-const DB_VERSION = 1;
-const STORE = 'library';
-
+const DB_NAME = 'hyezen', DB_VERSION = 1, STORE = 'library';
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -201,7 +183,6 @@ function openDB() {
     req.onerror = () => reject(req.error);
   });
 }
-
 async function dbAdd(item) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -240,14 +221,12 @@ async function dbDelete(id) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  LOCALSTORAGE — favorites, presets, settings
+//  LOCALSTORAGE
 // ═══════════════════════════════════════════════════════════
 const LS = {
   get(key, fallback) {
-    try {
-      const v = localStorage.getItem('hx_' + key);
-      return v ? JSON.parse(v) : fallback;
-    } catch { return fallback; }
+    try { const v = localStorage.getItem('hx_' + key); return v ? JSON.parse(v) : fallback; }
+    catch { return fallback; }
   },
   set(key, value) {
     try { localStorage.setItem('hx_' + key, JSON.stringify(value)); } catch {}
@@ -276,14 +255,12 @@ export default function App() {
 
   const [translateOn, setTranslateOn] = useState(false);
   const [targetLang, setTargetLang] = useState('es');
-  const [showOriginal, setShowOriginal] = useState(true);
 
-  // Modals
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [showModeModal, setShowModeModal] = useState(false);
   const [showTranslateModal, setShowTranslateModal] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
-  const [menuTab, setMenuTab] = useState('library'); // library | presets | batch
+  const [menuTab, setMenuTab] = useState('library');
 
   const [voiceSortMode, setVoiceSortMode] = useState('continent');
   const [translateSortMode, setTranslateSortMode] = useState('continent');
@@ -295,9 +272,13 @@ export default function App() {
   const longPressRef = useRef(null);
   const longPressFiredRef = useRef(false);
 
-  // Presets
+  // Presets + popup control
   const [presets, setPresets] = useState(() => LS.get('presets', []));
   const [presetName, setPresetName] = useState('');
+  const [presetPopupOn, setPresetPopupOn] = useState(() => LS.get('presetPopupOn', true));
+  const [userTouched, setUserTouched] = useState(false);
+  const [presetPrompt, setPresetPrompt] = useState(null);
+  // { voiceName, mode, translateOn, targetLang }
 
   // Library
   const [library, setLibrary] = useState([]);
@@ -305,9 +286,8 @@ export default function App() {
   const [renamingId, setRenamingId] = useState(null);
   const [renameDraft, setRenameDraft] = useState({ displayName: '', filename: '' });
 
-  // Naming modal (after generation, before library save)
+  // Name prompt (after generation)
   const [namePrompt, setNamePrompt] = useState(null);
-  // { blobUrl, blob, defaultDisplay, defaultFilename, voiceName, voiceLabel, mode, lang, duration, thenDownload }
 
   // Batch
   const [batchText, setBatchText] = useState('');
@@ -331,7 +311,6 @@ export default function App() {
     fair:       { name: 'FAIR-FULL TTS',     sub: '78 Global voices' },
     robotic:    { name: 'BASIC-ROBOTIC',     sub: 'Male & Female robotic' },
   };
-
   const tabs = [
     { id: 'elevenlabs', name: 'Ultra' },
     { id: 'xtts', name: 'XTTS' },
@@ -364,7 +343,6 @@ export default function App() {
     setBackendReady(true);
   }
 
-  // Load library on boot + whenever menu opens
   const refreshLibrary = useCallback(async () => {
     try {
       const items = await dbAll();
@@ -416,10 +394,37 @@ export default function App() {
     navTimer.current = setTimeout(() => setNavVisible(false), 5000);
   }
 
-  // Persist favorites + presets + autoDownload
+  // Persist
   useEffect(() => { LS.set('favorites', favorites); }, [favorites]);
   useEffect(() => { LS.set('presets', presets); }, [presets]);
+  useEffect(() => { LS.set('presetPopupOn', presetPopupOn); }, [presetPopupOn]);
   useEffect(() => { LS.set('autoDownload', autoDownload); }, [autoDownload]);
+
+  // ── Preset popup trigger ─────────────────────────────
+  // Fires when voice AND mode are set, userTouched is true, popup on,
+  // and no modal is currently open. Debounced.
+  useEffect(() => {
+    if (!presetPopupOn) return;
+    if (!userTouched) return;
+    if (!voice || !selectedMode) return;
+    if (showVoiceModal || showModeModal || showTranslateModal || showMenuModal) return;
+    if (voicePrompt || namePrompt || presetPrompt) return;
+
+    const t = setTimeout(() => {
+      setPresetPrompt({
+        voiceName: voice,
+        mode: selectedMode,
+        translateOn,
+        targetLang,
+      });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [
+    voice, selectedMode, translateOn, targetLang,
+    presetPopupOn, userTouched,
+    showVoiceModal, showModeModal, showTranslateModal, showMenuModal,
+    voicePrompt, namePrompt, presetPrompt,
+  ]);
 
   // ── Data fetch ───────────────────────────────────────
   async function fetchVoices(type) {
@@ -439,16 +444,13 @@ export default function App() {
     } catch (err) { console.error('Fetch modes error:', err); }
   }
 
-  // ── Favorites — long press (3s) ──────────────────────
+  // ── Favorites — 3s long press ────────────────────────
   function beginLongPress(voiceName) {
     longPressFiredRef.current = false;
     if (longPressRef.current) clearTimeout(longPressRef.current);
     longPressRef.current = setTimeout(() => {
       longPressFiredRef.current = true;
-      setFavorites(prev => {
-        const has = prev.includes(voiceName);
-        return has ? prev.filter(n => n !== voiceName) : [...prev, voiceName];
-      });
+      setFavorites(prev => prev.includes(voiceName) ? prev.filter(n => n !== voiceName) : [...prev, voiceName]);
     }, 3000);
   }
   function endLongPress() {
@@ -456,12 +458,10 @@ export default function App() {
     longPressRef.current = null;
   }
   function handleVoiceTap(v) {
-    if (longPressFiredRef.current) {
-      longPressFiredRef.current = false;
-      return;
-    }
+    if (longPressFiredRef.current) { longPressFiredRef.current = false; return; }
     previewVoice(v);
     setShowVoiceModal(false);
+    setUserTouched(true);
   }
 
   // ── Preview ──────────────────────────────────────────
@@ -469,12 +469,12 @@ export default function App() {
     setVoice(v);
     if (activeTab === 'robotic') {
       speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance('Voice preview testing 1 2 3');
-      const selectedVoice = getRoboticVoice(v);
-      if (selectedVoice) utterance.voice = selectedVoice;
-      utterance.rate = 1.1;
-      utterance.pitch = v === 'female' ? 1.3 : 0.8;
-      speechSynthesis.speak(utterance);
+      const u = new SpeechSynthesisUtterance('Voice preview testing 1 2 3');
+      const sv = getRoboticVoice(v);
+      if (sv) u.voice = sv;
+      u.rate = 1.1;
+      u.pitch = v === 'female' ? 1.3 : 0.8;
+      speechSynthesis.speak(u);
     } else {
       try {
         const res = await fetch(`${API_URL}/api/tts`, {
@@ -483,21 +483,14 @@ export default function App() {
           body: JSON.stringify({ text: 'Voice preview', voice: v, type: activeTab, speed: 1.0, mode: selectedMode }),
         });
         const data = await res.json();
-        if (data.url) {
-          const audio = new Audio(`${API_URL}${data.url}`);
-          audio.play().catch(e => console.log('Audio play failed:', e));
-        }
+        if (data.url) new Audio(`${API_URL}${data.url}`).play().catch(() => {});
       } catch (err) { console.error('Preview error:', err); }
     }
   }
-
   function getRoboticVoice(type) {
     if (synthVoices.length === 0) return null;
-    if (type === 'male') {
-      return synthVoices.find(v => v.name.toLowerCase().includes('david') || v.name.toLowerCase().includes('mark') || v.name.toLowerCase().includes('male')) || synthVoices[0];
-    } else {
-      return synthVoices.find(v => v.name.toLowerCase().includes('zira') || v.name.toLowerCase().includes('susan') || v.name.toLowerCase().includes('female')) || synthVoices[1] || synthVoices[0];
-    }
+    if (type === 'male') return synthVoices.find(v => /david|mark|male/i.test(v.name)) || synthVoices[0];
+    return synthVoices.find(v => /zira|susan|female/i.test(v.name)) || synthVoices[1] || synthVoices[0];
   }
 
   // ── Download helper ──────────────────────────────────
@@ -509,8 +502,16 @@ export default function App() {
     a.click();
     document.body.removeChild(a);
   }
+  async function copyToClipboard(textToCopy) {
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
-  // ── Generate audio (returns { url, blob }) ────────────
+  // ── Generate audio ───────────────────────────────────
   async function generateAudio({ spokenText, useVoice }) {
     if (activeTab === 'elevenlabs') {
       const res = await fetch(`${API_URL}/api/elevenlabs/tts`, {
@@ -545,7 +546,7 @@ export default function App() {
     return { url: fullUrl, blob };
   }
 
-  // ── Save audio to library (after naming) ──────────────
+  // ── Save audio to library ────────────────────────────
   async function saveToLibrary({ blob, displayName, filename, voiceName, mode, lang, duration }) {
     const id = (crypto.randomUUID && crypto.randomUUID()) || `id_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const item = {
@@ -565,28 +566,20 @@ export default function App() {
     await refreshLibrary();
     return item;
   }
-
-  // ── Play a library item ───────────────────────────────
   function playLibraryItem(item) {
     const url = URL.createObjectURL(item.blob);
     const audio = new Audio(url);
-    audio.play().catch(e => console.log(e));
+    audio.play().catch(() => {});
     audio.onended = () => URL.revokeObjectURL(url);
   }
-
   function downloadLibraryItem(item) {
     const url = URL.createObjectURL(item.blob);
     triggerDownload(url, item.filename);
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
-
-  // ── Rename library item ───────────────────────────────
   function startRename(item) {
     setRenamingId(item.id);
-    setRenameDraft({
-      displayName: item.displayName || '',
-      filename: item.filename || '',
-    });
+    setRenameDraft({ displayName: item.displayName || '', filename: item.filename || '' });
   }
   async function commitRename(id) {
     const item = await dbGet(id);
@@ -602,21 +595,29 @@ export default function App() {
     await refreshLibrary();
   }
 
-  // ── Presets ───────────────────────────────────────────
-  function savePreset() {
-    const name = (presetName || '').trim();
-    if (!name) return;
-    const newPreset = {
+  // ── Presets ──────────────────────────────────────────
+  function makePreset(name) {
+    return {
       id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      name,
+      name: (name || '').trim() || comboSummary(voices, voice, selectedMode, translateOn, targetLang),
       voice,
       mode: selectedMode,
       targetLang,
       translateOn,
       createdAt: Date.now(),
     };
-    setPresets(prev => [...prev, newPreset]);
+  }
+  function savePresetManual() {
+    const name = (presetName || '').trim();
+    if (!name) return;
+    const p = makePreset(name);
+    setPresets(prev => [...prev, p]);
     setPresetName('');
+  }
+  function savePresetFromPrompt(name) {
+    const p = makePreset(name);
+    setPresets(prev => [...prev, p]);
+    setPresetPrompt(null);
   }
   function applyPreset(p) {
     if (p.voice) setVoice(p.voice);
@@ -628,7 +629,7 @@ export default function App() {
     setPresets(prev => prev.filter(x => x.id !== id));
   }
 
-  // ── Core send flow ────────────────────────────────────
+  // ── Core send flow ───────────────────────────────────
   async function sendText() {
     if (!text.trim() || loading) return;
     const currentText = text.trim();
@@ -683,40 +684,36 @@ export default function App() {
   async function finalizeTTS({ originalText, spokenText, didTranslate, useVoice }) {
     setLoading(true);
     try {
-      // Show translated text in chat if applicable
-      if (didTranslate && showOriginal) {
-        setChat(prev => [...prev, { type: 'bot', text: `Original: ${originalText}\nTranslated: ${spokenText}` }]);
-      } else if (didTranslate) {
-        setChat(prev => [...prev, { type: 'bot', text: spokenText }]);
-      }
-
       const result = await generateAudio({ spokenText, useVoice });
 
       if (result.robotic) {
         speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(spokenText);
+        const u = new SpeechSynthesisUtterance(spokenText);
         const sv = getRoboticVoice(useVoice);
-        if (sv) utter.voice = sv;
-        utter.rate = 1.1;
-        utter.pitch = useVoice === 'female' ? 1.3 : 0.8;
-        speechSynthesis.speak(utter);
+        if (sv) u.voice = sv;
+        u.rate = 1.1;
+        u.pitch = useVoice === 'female' ? 1.3 : 0.8;
+        speechSynthesis.speak(u);
         setChat(prev => [...prev, { type: 'bot', text: `${useVoice === 'female' ? 'Female' : 'Male'} robotic voice played.` }]);
         setLoading(false);
         return;
       }
 
       const blobUrl = URL.createObjectURL(result.blob);
+      const vLabel = voiceLabel(voices, useVoice);
+      const defFilename = defaultFilename(vLabel, selectedMode, didTranslate ? targetLang : 'en');
 
+      // Push a single bubble with: translation info + audio + copy/toggle controls
       setChat(prev => [...prev, {
         type: 'bot',
         audio: blobUrl,
         tier: activeTab,
-        filename: defaultFilename(voiceLabel(voices, useVoice), selectedMode, didTranslate ? targetLang : 'en'),
+        filename: defFilename,
+        originalText: didTranslate ? originalText : null,
+        translatedText: didTranslate ? spokenText : null,
+        spokenText,
       }]);
 
-      // Prompt for naming → then save + optional download
-      const vLabel = voiceLabel(voices, useVoice);
-      const defFilename = defaultFilename(vLabel, selectedMode, didTranslate ? targetLang : 'en');
       setNamePrompt({
         blob: result.blob,
         defaultDisplay: spokenText.slice(0, 60),
@@ -734,7 +731,6 @@ export default function App() {
     setLoading(false);
   }
 
-  // Resolve name prompt
   async function resolveNamePrompt({ displayName, filename, skip }) {
     if (!namePrompt) return;
     const p = namePrompt;
@@ -755,9 +751,7 @@ export default function App() {
         triggerDownload(url, filename || p.defaultFilename);
         setTimeout(() => URL.revokeObjectURL(url), 4000);
       }
-    } catch (e) {
-      console.error('save library failed:', e);
-    }
+    } catch (e) { console.error('save library failed:', e); }
   }
 
   async function resolveVoicePrompt(action) {
@@ -789,9 +783,7 @@ export default function App() {
     const lines = batchText.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
 
-    let preset = null;
-    if (batchPresetId) preset = presets.find(p => p.id === batchPresetId) || null;
-
+    const preset = batchPresetId ? presets.find(p => p.id === batchPresetId) : null;
     const batchVoice = preset?.voice || voice;
     const batchMode = preset?.mode || selectedMode;
     const batchLang = preset?.targetLang || targetLang;
@@ -802,7 +794,6 @@ export default function App() {
     setBatchProgress({ done: 0, total: lines.length });
 
     const results = [];
-
     for (let i = 0; i < lines.length; i++) {
       if (batchCancelRef.current) break;
       const line = lines[i];
@@ -815,16 +806,11 @@ export default function App() {
             if (t && t !== line) { spokenText = t; didTranslate = true; }
           } catch {}
         }
-
         const result = await generateAudio({ spokenText, useVoice: batchVoice });
-
         if (result.robotic) {
           results.push({ error: 'robotic not supported in batch', line });
         } else {
-          const vLabel = voiceLabel(voices, batchVoice);
-          const filename = sanitizeFilename(
-            `${batchPrefix}_${String(i + 1).padStart(3, '0')}.mp3`
-          );
+          const filename = sanitizeFilename(`${batchPrefix}_${String(i + 1).padStart(3, '0')}.mp3`);
           const displayName = `${batchPrefix} ${i + 1}`;
           await saveToLibrary({
             blob: result.blob,
@@ -842,10 +828,8 @@ export default function App() {
       }
       setBatchProgress({ done: i + 1, total: lines.length });
     }
-
     setBatchRunning(false);
 
-    // Offer ZIP download of successful clips
     const successful = results.filter(r => r.blob);
     if (successful.length > 0) {
       const zip = new JSZip();
@@ -860,9 +844,7 @@ export default function App() {
       }]);
     }
   }
-  function cancelBatch() {
-    batchCancelRef.current = true;
-  }
+  function cancelBatch() { batchCancelRef.current = true; }
 
   // ── Recording (ElevenLabs clone) ──────────────────────
   async function startRecording(e) {
@@ -922,13 +904,10 @@ export default function App() {
     });
   }
 
-  // ── Group voices for modal (with favorites pin) ───────
+  // ── Voice groups ─────────────────────────────────────
   function buildVoiceGroups() {
-    if (activeTab === 'robotic' || activeTab === 'elevenlabs') {
-      return [{ continent: null, items: voices }];
-    }
+    if (activeTab === 'robotic' || activeTab === 'elevenlabs') return [{ continent: null, items: voices }];
     const favItems = voices.filter(v => favorites.includes(v.name));
-
     if (voiceSortMode === 'alpha') {
       const sorted = [...voices].sort((a, b) => a.name.localeCompare(b.name));
       const groups = [];
@@ -940,37 +919,30 @@ export default function App() {
       const region = voiceRegion(v.name);
       return region ? REGION_TO_CONTINENT[region] : null;
     });
-    if (favItems.length > 0) {
-      return [{ continent: 'Favorites', items: favItems }, ...byCont];
-    }
+    if (favItems.length > 0) return [{ continent: 'Favorites', items: favItems }, ...byCont];
     return byCont;
   }
-
   function buildTranslateGroups() {
     const items = Object.entries(LANG_META).map(([code, meta]) => ({ code, ...meta }));
-    if (translateSortMode === 'alpha') {
-      return [{ continent: null, items: items.sort((a, b) => a.code.localeCompare(b.code)) }];
-    }
+    if (translateSortMode === 'alpha') return [{ continent: null, items: items.sort((a, b) => a.code.localeCompare(b.code)) }];
     return groupByContinent(items, i => i.continent);
   }
-
   const voiceGroups = buildVoiceGroups();
   const translateGroups = buildTranslateGroups();
 
-  // Group library by date
   function groupLibraryByDate(items) {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfYesterday = startOfToday - 86400000;
-    const startOfWeek = startOfToday - 6 * 86400000;
-    const groups = { Today: [], Yesterday: [], 'This week': [], Older: [] };
+    const sToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const sYest = sToday - 86400000;
+    const sWeek = sToday - 6 * 86400000;
+    const g = { Today: [], Yesterday: [], 'This week': [], Older: [] };
     for (const it of items) {
-      if (it.createdAt >= startOfToday) groups.Today.push(it);
-      else if (it.createdAt >= startOfYesterday) groups.Yesterday.push(it);
-      else if (it.createdAt >= startOfWeek) groups['This week'].push(it);
-      else groups.Older.push(it);
+      if (it.createdAt >= sToday) g.Today.push(it);
+      else if (it.createdAt >= sYest) g.Yesterday.push(it);
+      else if (it.createdAt >= sWeek) g['This week'].push(it);
+      else g.Older.push(it);
     }
-    return Object.entries(groups).filter(([, arr]) => arr.length > 0);
+    return Object.entries(g).filter(([, arr]) => arr.length > 0);
   }
   const libraryGroups = groupLibraryByDate(library);
 
@@ -1131,6 +1103,14 @@ export default function App() {
         .hx-preset-info { flex: 1; min-width: 0; }
         .hx-preset-name { font-size: 13px; font-weight: 600; }
         .hx-preset-meta { font-size: 10.5px; color: #8696a0; margin-top: 3px; }
+
+        .hx-copy-btn { padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: #e9edef; font-size: 11px; cursor: pointer; transition: all 0.18s; font-weight: 600; letter-spacing: 0.03em; }
+        .hx-copy-btn:hover { background: rgba(255,255,255,0.14); }
+        .hx-copy-btn.copied { border-color: #00a884; color: #00a884; }
+
+        .hx-text-toggle { display: inline-flex; background: rgba(0,0,0,0.3); border-radius: 999px; padding: 2px; gap: 2px; }
+        .hx-text-toggle button { padding: 3px 10px; border: none; background: transparent; color: #8696a0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; cursor: pointer; border-radius: 999px; transition: all 0.18s; }
+        .hx-text-toggle button.active { background: rgba(0,168,132,0.2); color: #00a884; }
       `}</style>
 
       {/* ══ HEADER ══ */}
@@ -1157,7 +1137,7 @@ export default function App() {
             <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none">
               <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
             </svg>
-            <div className="hx-pill hx-pill-voice" onClick={() => setShowVoiceModal(true)}>
+            <div className="hx-pill hx-pill-voice" onClick={() => { setShowVoiceModal(true); setUserTouched(true); }}>
               {voiceLabel(voices, voice).toUpperCase()}
             </div>
           </div>
@@ -1166,7 +1146,7 @@ export default function App() {
             <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none">
               <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
             </svg>
-            <div className="hx-pill hx-pill-modes" onClick={() => setShowModeModal(true)}>
+            <div className="hx-pill hx-pill-modes" onClick={() => { setShowModeModal(true); setUserTouched(true); }}>
               {prettyMode(selectedMode)}
             </div>
           </div>
@@ -1175,7 +1155,7 @@ export default function App() {
             <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none">
               <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
             </svg>
-            <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => setShowTranslateModal(true)}>
+            <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => { setShowTranslateModal(true); setUserTouched(true); }}>
               {translateOn ? (LANG_META[targetLang]?.label.toUpperCase() || 'OFF') : 'OFF'}
             </div>
           </div>
@@ -1196,32 +1176,7 @@ export default function App() {
       {/* ══ CHAT ══ */}
       <div onScroll={handleChatScroll} style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', background: '#0a0a0f' }}>
         {chat.map((msg, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: msg.type === 'user' ? 'flex-end' : 'flex-start', marginBottom: '12px' }}>
-            <div style={{
-              maxWidth: 'min(78%, 560px)',
-              padding: msg.audio ? '8px' : '12px 16px',
-              borderRadius: '18px',
-              background: msg.type === 'user' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.08)',
-              backdropFilter: 'blur(10px)',
-              fontSize: '15px', lineHeight: '1.45',
-              whiteSpace: 'pre-wrap',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              border: msg.type === 'bot' ? '1px solid rgba(255,255,255,0.05)' : 'none',
-            }}>
-              {msg.audio ? (
-                <div>
-                  <audio controls src={msg.audio} style={{ width: '220px', borderRadius: '12px', marginBottom: '8px' }} />
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                    <button onClick={() => triggerDownload(msg.audio, msg.filename)} style={{
-                      padding: '6px 12px', background: 'rgba(255,255,255,0.15)',
-                      border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px',
-                      color: '#fff', fontSize: '12px', cursor: 'pointer', fontWeight: '600',
-                    }}>Download</button>
-                  </div>
-                </div>
-              ) : msg.text}
-            </div>
-          </div>
+          <ChatBubble key={i} msg={msg} onCopy={copyToClipboard} onDownload={triggerDownload} />
         ))}
         {loading && <div style={{ textAlign: 'center', color: '#888', fontSize: '12.5px', marginTop: '10px', letterSpacing: '0.05em' }}>Generating voice...</div>}
         <div ref={chatEndRef} />
@@ -1258,11 +1213,6 @@ export default function App() {
                   <span style={{ fontSize: '11.5px', color: '#3b82f6', letterSpacing: '0.03em' }}>
                     Speaking in {LANG_META[targetLang]?.label}
                   </span>
-                )}
-                {translateOn && (
-                  <button className={`hx-toggle ${showOriginal ? 'on' : ''}`} onClick={() => setShowOriginal(!showOriginal)}>
-                    {showOriginal ? 'Show original' : 'Translated only'}
-                  </button>
                 )}
               </div>
             ) : null}
@@ -1326,19 +1276,12 @@ export default function App() {
                         <div key={item.id} className="hx-lib-row">
                           {renamingId === item.id ? (
                             <div className="hx-lib-info" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <input
-                                className="hx-input"
-                                value={renameDraft.displayName}
+                              <input className="hx-input" value={renameDraft.displayName}
                                 onChange={e => setRenameDraft({ ...renameDraft, displayName: e.target.value })}
-                                placeholder="Display name"
-                                autoFocus
-                              />
-                              <input
-                                className="hx-input"
-                                value={renameDraft.filename}
+                                placeholder="Display name" autoFocus />
+                              <input className="hx-input" value={renameDraft.filename}
                                 onChange={e => setRenameDraft({ ...renameDraft, filename: e.target.value })}
-                                placeholder="filename.mp3"
-                              />
+                                placeholder="filename.mp3" />
                               <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                                 <button className="hx-modal-btn primary" style={{ flex: 1, padding: '8px' }} onClick={() => commitRename(item.id)}>Save</button>
                                 <button className="hx-modal-btn" style={{ flex: 1, padding: '8px' }} onClick={() => setRenamingId(null)}>Cancel</button>
@@ -1354,10 +1297,10 @@ export default function App() {
                                   {' · '}{(item.size / 1024).toFixed(0)} KB
                                 </div>
                               </div>
-                              <button className="hx-icon-btn" onClick={() => playLibraryItem(item)} title="Play">Play</button>
-                              <button className="hx-icon-btn" onClick={() => startRename(item)} title="Rename">Edit</button>
-                              <button className="hx-icon-btn" onClick={() => downloadLibraryItem(item)} title="Download">Save</button>
-                              <button className="hx-icon-btn danger" onClick={() => deleteLibraryItem(item.id)} title="Delete">Del</button>
+                              <button className="hx-icon-btn" onClick={() => playLibraryItem(item)}>Play</button>
+                              <button className="hx-icon-btn" onClick={() => startRename(item)}>Edit</button>
+                              <button className="hx-icon-btn" onClick={() => downloadLibraryItem(item)}>Save</button>
+                              <button className="hx-icon-btn danger" onClick={() => deleteLibraryItem(item.id)}>Del</button>
                             </>
                           )}
                         </div>
@@ -1371,20 +1314,26 @@ export default function App() {
             {/* ── PRESETS ── */}
             {menuTab === 'presets' && (
               <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: '11px', color: '#8696a0', letterSpacing: '0.05em' }}>
+                    {presets.length} {presets.length === 1 ? 'preset' : 'presets'}
+                  </div>
+                  <button className={`hx-toggle ${presetPopupOn ? 'on' : ''}`} onClick={() => setPresetPopupOn(!presetPopupOn)}>
+                    Popup on pill change: {presetPopupOn ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+
                 <div style={{ marginBottom: '16px' }}>
                   <label className="hx-label-sm">Save current setup</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      className="hx-input"
-                      value={presetName}
+                    <input className="hx-input" value={presetName}
                       onChange={e => setPresetName(e.target.value)}
                       placeholder="Preset name (e.g. Narrator FR)"
-                      onKeyDown={e => e.key === 'Enter' && savePreset()}
-                    />
-                    <button className="hx-modal-btn primary" style={{ flex: '0 0 auto', minWidth: '80px' }} onClick={savePreset}>Save</button>
+                      onKeyDown={e => e.key === 'Enter' && savePresetManual()} />
+                    <button className="hx-modal-btn primary" style={{ flex: '0 0 auto', minWidth: '80px' }} onClick={savePresetManual}>Save</button>
                   </div>
                   <div style={{ fontSize: '11px', color: '#8696a0', marginTop: '6px', letterSpacing: '0.03em' }}>
-                    Captures: {voiceLabel(voices, voice)} · {prettyMode(selectedMode)} · {translateOn ? (LANG_META[targetLang]?.label || 'Off') : 'No translation'}
+                    Captures: {comboSummary(voices, voice, selectedMode, translateOn, targetLang)}
                   </div>
                 </div>
 
@@ -1416,46 +1365,30 @@ export default function App() {
 
                 <div style={{ marginBottom: '12px' }}>
                   <label className="hx-label-sm">Preset (optional)</label>
-                  <select
-                    className="hx-input"
-                    value={batchPresetId}
-                    onChange={e => setBatchPresetId(e.target.value)}
-                  >
+                  <select className="hx-input" value={batchPresetId} onChange={e => setBatchPresetId(e.target.value)}>
                     <option value="">— Use current settings —</option>
-                    {presets.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
+                    {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
 
                 <div style={{ marginBottom: '12px' }}>
                   <label className="hx-label-sm">Filename prefix</label>
-                  <input
-                    className="hx-input"
-                    value={batchPrefix}
-                    onChange={e => setBatchPrefix(e.target.value)}
-                    placeholder="clip"
-                  />
-                  <div style={{ fontSize: '10.5px', color: '#8696a0', marginTop: '5px', letterSpacing: '0.02em' }}>
+                  <input className="hx-input" value={batchPrefix} onChange={e => setBatchPrefix(e.target.value)} placeholder="clip" />
+                  <div style={{ fontSize: '10.5px', color: '#8696a0', marginTop: '5px' }}>
                     Files: {batchPrefix || 'clip'}_001.mp3, {batchPrefix || 'clip'}_002.mp3, …
                   </div>
                 </div>
 
                 <div style={{ marginBottom: '12px' }}>
                   <label className="hx-label-sm">Lines</label>
-                  <textarea
-                    className="hx-input"
-                    value={batchText}
-                    onChange={e => setBatchText(e.target.value)}
-                    placeholder={'Hello world\nSecond clip\nThird one'}
-                    rows={6}
-                    style={{ resize: 'vertical', fontFamily: 'inherit' }}
-                  />
+                  <textarea className="hx-input" value={batchText} onChange={e => setBatchText(e.target.value)}
+                    placeholder={'Hello world\nSecond clip\nThird one'} rows={6}
+                    style={{ resize: 'vertical', fontFamily: 'inherit' }} />
                 </div>
 
                 {batchRunning ? (
                   <>
-                    <div style={{ fontSize: '12px', color: '#8696a0', marginBottom: '6px', letterSpacing: '0.03em' }}>
+                    <div style={{ fontSize: '12px', color: '#8696a0', marginBottom: '6px' }}>
                       Generating {batchProgress.done} / {batchProgress.total}…
                     </div>
                     <div className="hx-progress">
@@ -1467,12 +1400,9 @@ export default function App() {
                   </>
                 ) : (
                   <div className="hx-modal-actions">
-                    <button
-                      className="hx-modal-btn primary"
-                      onClick={runBatch}
+                    <button className="hx-modal-btn primary" onClick={runBatch}
                       disabled={!batchText.trim()}
-                      style={{ opacity: batchText.trim() ? 1 : 0.5 }}
-                    >
+                      style={{ opacity: batchText.trim() ? 1 : 0.5 }}>
                       Generate batch
                     </button>
                   </div>
@@ -1551,11 +1481,8 @@ export default function App() {
             ) : (
               <div className="hx-modal-grid">
                 {modes.map(m => (
-                  <button
-                    key={m}
-                    className={`hx-modal-pill purple ${selectedMode === m ? 'active' : ''}`}
-                    onClick={() => { setSelectedMode(m); setShowModeModal(false); }}
-                  >
+                  <button key={m} className={`hx-modal-pill purple ${selectedMode === m ? 'active' : ''}`}
+                    onClick={() => { setSelectedMode(m); setShowModeModal(false); }}>
                     {m.replace(/_/g, ' ')}
                   </button>
                 ))}
@@ -1577,21 +1504,17 @@ export default function App() {
               </div>
             </div>
             <div style={{ marginBottom: '14px' }}>
-              <button
-                className={`hx-modal-pill off ${!translateOn ? 'active' : ''}`}
-                onClick={() => { setTranslateOn(false); setShowTranslateModal(false); }}
-              >Off</button>
+              <button className={`hx-modal-pill off ${!translateOn ? 'active' : ''}`}
+                onClick={() => { setTranslateOn(false); setShowTranslateModal(false); }}>Off</button>
             </div>
             {translateGroups.map((group, gi) => (
               <div key={gi} className="hx-group">
                 {group.continent && <div className="hx-group-title">{group.continent}</div>}
                 <div className="hx-modal-grid">
                   {group.items.map(l => (
-                    <button
-                      key={l.code}
+                    <button key={l.code}
                       className={`hx-modal-pill blue ${translateOn && targetLang === l.code ? 'active' : ''}`}
-                      onClick={() => { setTranslateOn(true); setTargetLang(l.code); setShowTranslateModal(false); }}
-                    >
+                      onClick={() => { setTranslateOn(true); setTargetLang(l.code); setShowTranslateModal(false); }}>
                       {l.label}
                     </button>
                   ))}
@@ -1625,11 +1548,19 @@ export default function App() {
         </div>
       )}
 
-      {/* ══ NAME PROMPT (save to library) ══ */}
+      {/* ══ NAME PROMPT ══ */}
       {namePrompt && (
-        <NamePromptModal
-          prompt={namePrompt}
-          onResolve={resolveNamePrompt}
+        <NamePromptModal prompt={namePrompt} onResolve={resolveNamePrompt} />
+      )}
+
+      {/* ══ PRESET PROMPT ══ */}
+      {presetPrompt && (
+        <PresetPromptModal
+          prompt={presetPrompt}
+          voices={voices}
+          onSave={(name) => savePresetFromPrompt(name)}
+          onNotNow={() => setPresetPrompt(null)}
+          onNever={() => { setPresetPopupOn(false); setPresetPrompt(null); }}
         />
       )}
     </div>
@@ -1637,7 +1568,101 @@ export default function App() {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  NAME PROMPT — small internal component with local state
+//  CHAT BUBBLE — handles original/translated toggle + copy
+// ═══════════════════════════════════════════════════════════
+function ChatBubble({ msg, onCopy, onDownload }) {
+  const [showTranslated, setShowTranslated] = useState(true); // for user bubble w/ translation
+  const [copied, setCopied] = useState(false);
+
+  async function doCopy(txt) {
+    const ok = await onCopy(txt);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }
+
+  if (msg.type === 'user') {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+        <div style={{
+          maxWidth: 'min(78%, 560px)',
+          padding: '12px 16px',
+          borderRadius: '18px',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          fontSize: '15px', lineHeight: '1.45', whiteSpace: 'pre-wrap',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          position: 'relative',
+        }}>
+          <div>{msg.text}</div>
+          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '6px' }}>
+            <button className={`hx-copy-btn ${copied ? 'copied' : ''}`} onClick={() => doCopy(msg.text)}>
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Bot bubble
+  const hasTranslation = !!(msg.originalText && msg.translatedText && msg.originalText !== msg.translatedText);
+  const displayedText = hasTranslation
+    ? (showTranslated ? msg.translatedText : msg.originalText)
+    : msg.text || msg.spokenText;
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '12px' }}>
+      <div style={{
+        maxWidth: 'min(78%, 560px)',
+        padding: msg.audio ? '12px' : '12px 16px',
+        borderRadius: '18px',
+        background: 'rgba(255,255,255,0.08)',
+        backdropFilter: 'blur(10px)',
+        fontSize: '15px', lineHeight: '1.45', whiteSpace: 'pre-wrap',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+        border: '1px solid rgba(255,255,255,0.05)',
+      }}>
+        {/* Text area (original / translated toggle) */}
+        {displayedText && (
+          <div style={{ marginBottom: msg.audio ? '10px' : '0' }}>
+            {hasTranslation && (
+              <div style={{ marginBottom: '8px' }}>
+                <div className="hx-text-toggle">
+                  <button className={!showTranslated ? 'active' : ''} onClick={() => setShowTranslated(false)}>Original</button>
+                  <button className={showTranslated ? 'active' : ''} onClick={() => setShowTranslated(true)}>Translated</button>
+                </div>
+              </div>
+            )}
+            <div>{displayedText}</div>
+            <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+              <button className={`hx-copy-btn ${copied ? 'copied' : ''}`} onClick={() => doCopy(displayedText)}>
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Audio */}
+        {msg.audio && (
+          <div>
+            <audio controls src={msg.audio} style={{ width: '220px', borderRadius: '12px', marginBottom: '8px' }} />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => onDownload(msg.audio, msg.filename)} style={{
+                padding: '6px 12px', background: 'rgba(255,255,255,0.15)',
+                border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px',
+                color: '#fff', fontSize: '12px', cursor: 'pointer', fontWeight: '600',
+              }}>Download</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  NAME PROMPT
 // ═══════════════════════════════════════════════════════════
 function NamePromptModal({ prompt, onResolve }) {
   const [displayName, setDisplayName] = useState(prompt.defaultDisplay || '');
@@ -1650,35 +1675,56 @@ function NamePromptModal({ prompt, onResolve }) {
         <p style={{ fontSize: '13px', color: '#8696a0', marginBottom: '16px' }}>
           Give this clip a name, or skip to leave it unnamed.
         </p>
-
         <div style={{ marginBottom: '12px' }}>
           <label className="hx-label-sm">Display name</label>
-          <input
-            className="hx-input"
-            value={displayName}
+          <input className="hx-input" value={displayName}
             onChange={e => setDisplayName(e.target.value)}
-            placeholder="What shows in the library"
-            autoFocus
-          />
+            placeholder="What shows in the library" autoFocus />
         </div>
-
         <div style={{ marginBottom: '4px' }}>
           <label className="hx-label-sm">Filename</label>
-          <input
-            className="hx-input"
-            value={filename}
+          <input className="hx-input" value={filename}
             onChange={e => setFilename(e.target.value)}
-            placeholder="filename.mp3"
-          />
+            placeholder="filename.mp3" />
         </div>
-
         <div className="hx-modal-actions">
-          <button className="hx-modal-btn primary" onClick={() => onResolve({ displayName, filename })}>
-            Save
-          </button>
-          <button className="hx-modal-btn" onClick={() => onResolve({ skip: true })}>
-            Skip
-          </button>
+          <button className="hx-modal-btn primary" onClick={() => onResolve({ displayName, filename })}>Save</button>
+          <button className="hx-modal-btn" onClick={() => onResolve({ skip: true })}>Skip</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PRESET PROMPT
+// ═══════════════════════════════════════════════════════════
+function PresetPromptModal({ prompt, voices, onSave, onNotNow, onNever }) {
+  const [name, setName] = useState('');
+
+  const summary = comboSummary(voices, prompt.voiceName, prompt.mode, prompt.translateOn, prompt.targetLang);
+
+  return (
+    <div className="hx-modal-backdrop" onClick={onNotNow}>
+      <div className="hx-modal" onClick={e => e.stopPropagation()}>
+        <h3>Save this combo</h3>
+        <p style={{ fontSize: '13px', color: '#8696a0', marginBottom: '12px' }}>
+          Save these settings as a preset you can load later.
+        </p>
+        <div style={{ fontSize: '12px', color: '#e9edef', marginBottom: '14px', padding: '8px 10px', background: 'rgba(0,168,132,0.08)', border: '1px solid rgba(0,168,132,0.25)', borderRadius: '10px', letterSpacing: '0.03em' }}>
+          {summary}
+        </div>
+        <div style={{ marginBottom: '6px' }}>
+          <label className="hx-label-sm">Preset name</label>
+          <input className="hx-input" value={name} onChange={e => setName(e.target.value)}
+            placeholder="e.g. Narrator FR"
+            onKeyDown={e => e.key === 'Enter' && onSave(name)}
+            autoFocus />
+        </div>
+        <div className="hx-modal-actions">
+          <button className="hx-modal-btn primary" onClick={() => onSave(name)}>Save preset</button>
+          <button className="hx-modal-btn" onClick={onNotNow}>Not now</button>
+          <button className="hx-modal-btn danger" onClick={onNever}>Never show again</button>
         </div>
       </div>
     </div>
