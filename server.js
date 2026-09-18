@@ -1,6 +1,6 @@
 // ============================================================
-//  HYEZEN TTS v10 – FINAL PRODUCTION VERSION (FULLY FIXED)
-//  Uses v7's working edge-tts approach with correct rate/pitch
+//  HYEZEN TTS v11 – V1 PROSODY ENRICHMENT
+//  Adds: fillers, elongation, caps awareness, conversation mode
 // ============================================================
 
 import 'dotenv/config';
@@ -49,7 +49,6 @@ function getSentences(text) {
 //  HARDCODED VOICE LISTS
 // ============================================================
 
-// ----- REALISTIC – 108 premium voices -----
 const REALISTIC_VOICES = [
   { name: 'en-US-JennyNeural', label: 'Jenny (US)', locale: 'en-US', quality: 'premium' },
   { name: 'en-US-AriaNeural', label: 'Aria (US)', locale: 'en-US', quality: 'premium' },
@@ -161,7 +160,6 @@ const REALISTIC_VOICES = [
   { name: 'hr-HR-SreckoNeural', label: 'Srecko (Croatia)', locale: 'hr-HR', quality: 'good' },
 ];
 
-// ----- FAIR – 82 voices -----
 const FAIR_VOICES = [
   { name: 'en-US-JennyNeural', label: 'Jenny US', locale: 'en-US' },
   { name: 'en-US-AriaNeural', label: 'Aria US', locale: 'en-US' },
@@ -247,7 +245,6 @@ const FAIR_VOICES = [
   { name: 'es-AR-ElenaNeural', label: 'Elena AR', locale: 'es-AR' },
 ];
 
-// XTTS and Robotic
 const XTTS_VOICES = [
   { name: 'en-US-AriaNeural', label: 'XTTS Female' },
   { name: 'en-US-GuyNeural', label: 'XTTS Male' }
@@ -258,7 +255,6 @@ const ROBOTIC_VOICES = [
   { name: 'female', label: 'Female Robotic' }
 ];
 
-// Build voice map for language routing
 const voiceMap = {};
 [...REALISTIC_VOICES, ...FAIR_VOICES].forEach(v => {
   if (!voiceMap[v.locale]) voiceMap[v.locale] = [];
@@ -266,10 +262,8 @@ const voiceMap = {};
 });
 
 // ============================================================
-//  FEATURES: Language Router, Emotion, Punctuation, etc.
+//  LANGUAGE ROUTING
 // ============================================================
-
-// Language → locale mapping
 const LANGUAGE_TO_LOCALE = {
   eng: 'en-US',
   cmn: 'zh-CN',
@@ -308,7 +302,9 @@ function detectLanguageWithConfidence(text) {
   }
 }
 
-// Pronunciation dictionary
+// ============================================================
+//  PRONUNCIATION DICTIONARY
+// ============================================================
 const PRONUNCIATION_DICT = {
   'HYEZEN': 'H Y E Z E N',
   'AI': 'A I',
@@ -324,7 +320,9 @@ function applyPronunciation(text) {
   return result;
 }
 
-// Advanced punctuation
+// ============================================================
+//  PUNCTUATION PAUSES
+// ============================================================
 function getPauseDuration(char, multiplier = 1.0) {
   const map = {
     ',': 200,
@@ -343,7 +341,9 @@ function getPauseDuration(char, multiplier = 1.0) {
   return (map[char] || 300) * multiplier;
 }
 
-// Emotion detection
+// ============================================================
+//  EMOTION DETECTION
+// ============================================================
 const EMOTION_KEYWORDS = {
   happy: ['happy', 'joy', 'celebrate', 'glad', 'cheerful', 'smile'],
   sad: ['sad', 'cry', 'tear', 'grief', 'mourn', 'depressed'],
@@ -382,7 +382,9 @@ function getEmotionProsody(emotion) {
   return map[emotion] || map.neutral;
 }
 
-// Number normalization (language-specific)
+// ============================================================
+//  NUMBER NORMALIZATION
+// ============================================================
 function normalizeNumbersLang(text, lang) {
   if (lang === 'eng') {
     text = text.replace(/\$(\d+)/g, (m, n) => {
@@ -407,7 +409,9 @@ function normalizeNumbersLang(text, lang) {
   return text;
 }
 
-// Character voice system
+// ============================================================
+//  CHARACTER VOICES (legacy)
+// ============================================================
 function applyCharacterVoices(text, characterMap) {
   if (!characterMap || Object.keys(characterMap).length === 0) return text;
   const voices = Object.values(characterMap);
@@ -417,6 +421,85 @@ function applyCharacterVoices(text, characterMap) {
     idx++;
     return `[${voice} voice] "${inner}"`;
   });
+}
+
+// ============================================================
+//  ⭐ NEW — V1 PROSODY ENRICHMENT
+//  Fillers, elongation, caps awareness.
+//  Runs before processText's other passes.
+// ============================================================
+
+// Filler patterns — standalone only (word boundaries on both sides)
+const FILLER_PATTERNS = [
+  /\buh+\b/gi,
+  /\buhm+\b/gi,
+  /\bum+\b/gi,
+  /\bhmm+\b/gi,
+  /\berr+\b/gi,
+  /\beh+\b/gi,
+  /\bah+\b/gi,
+  /\boh+\b/gi,
+  /\bm+hm+\b/gi,
+];
+
+// Caps detection — 2+ uppercase letters, standalone
+const CAPS_WORD_RE = /\b[A-Z]{2,}\b/g;
+
+// Words we treat as neutral even if caps (acronyms, common non-emphatic)
+const CAPS_WHITELIST = new Set(['OK', 'OKAY', 'AI', 'US', 'UK', 'USA', 'PM', 'AM', 'TV']);
+
+function enrichProsody(text, options = {}) {
+  const {
+    fillersOn = true,
+    elongationOn = true,
+    capsAwareness = true,
+  } = options;
+
+  let out = text;
+  let fillerCount = 0;
+  let elongationCount = 0;
+  let capsWords = [];
+
+  // 1. Fillers → append "..." if not already
+  if (fillersOn) {
+    for (const re of FILLER_PATTERNS) {
+      out = out.replace(re, (match) => {
+        // Check if ellipsis already follows (approximately — cheap check)
+        fillerCount++;
+        return match + '...';
+      });
+    }
+    // Collapse accidental double ellipsis: "uh..... " → "uh... "
+    out = out.replace(/\.{4,}/g, '...');
+  }
+
+  // 2. Elongation — repeat last vowel on short duplicate words
+  if (elongationOn) {
+    out = out.replace(/\b(\w{2,5})\s+\1\b/gi, (match, word) => {
+      // Only if the word ends in a vowel
+      if (!/[aeiou]$/i.test(word)) return match;
+      const lastVowel = word[word.length - 1];
+      const elongated = word + lastVowel + lastVowel;
+      elongationCount++;
+      return elongated + ' ' + word;
+    });
+  }
+
+  // 3. Caps detection
+  if (capsAwareness) {
+    const matches = out.match(CAPS_WORD_RE) || [];
+    capsWords = matches.filter(w => !CAPS_WHITELIST.has(w));
+    // Note: we do NOT modify the text. Caps is a signal only.
+    // The pitch nudge is applied later in processText.
+  }
+
+  return {
+    text: out,
+    capsEmphasis: capsWords.length > 0,
+    capsWords,
+    fillerCount,
+    elongationCount,
+  };
 }
 
 // ============================================================
@@ -433,10 +516,11 @@ const NARRATION_MODES = {
   whisper: { speed: 0.70, pitch: 5 },
   dramatic: { speed: 0.75, pitch: -5 },
   fast_talker: { speed: 1.4, pitch: 0 },
+  conversation: { speed: 0.95, pitch: 1 },   // ⭐ NEW
 };
 
 // ============================================================
-//  TEXT PROCESSOR (with correct rate/pitch conversion)
+//  TEXT PROCESSOR — now with enrichment
 // ============================================================
 function processText({
   text,
@@ -447,6 +531,9 @@ function processText({
   emotion = null,
   characterMap = null,
   userPronunciation = null,
+  capsAwareness = true,
+  fillersOn = true,
+  elongationOn = true,
 }) {
   // Clean
   let processed = text
@@ -458,6 +545,10 @@ function processText({
     .replace(/\s+/g, ' ')
     .trim();
 
+  // ⭐ NEW — enrichment pass (fillers, elongation, caps detection)
+  const enrichment = enrichProsody(processed, { fillersOn, elongationOn, capsAwareness });
+  processed = enrichment.text;
+
   // User & default pronunciation
   if (userPronunciation) {
     for (const [word, pron] of Object.entries(userPronunciation)) {
@@ -468,59 +559,74 @@ function processText({
 
   // Language detection
   const { lang } = detectLanguageWithConfidence(processed);
+
   // Number normalization
   processed = normalizeNumbersLang(processed, lang);
 
-  // Emotion
-  if (!emotion) emotion = detectEmotion(processed);
+  // Emotion — caps emphasis overrides to excited if no other clear signal
+  if (!emotion) {
+    const detected = detectEmotion(processed);
+    if (enrichment.capsEmphasis && detected === 'neutral') {
+      emotion = 'excited';
+    } else {
+      emotion = detected;
+    }
+  }
   const emotionProsody = getEmotionProsody(emotion);
 
-  // Character voices (simplified - just add markers)
+  // Character voices
   processed = applyCharacterVoices(processed, characterMap);
 
   // Apply mode
   const modeSettings = NARRATION_MODES[mode] || NARRATION_MODES.story;
   const finalSpeed = speed * (1 + (emotionProsody.rate / 100)) * (modeSettings.speed / 1.0);
-  const finalPitch = pitch + emotionProsody.pitch + (modeSettings.pitch || 0);
+
+  // Caps emphasis → +2 pitch nudge (sentence-level)
+  const capsBoost = (enrichment.capsEmphasis && capsAwareness) ? 2 : 0;
+  const finalPitch = pitch + emotionProsody.pitch + (modeSettings.pitch || 0) + capsBoost;
 
   // Convert to edge-tts format
-  // Rate: percentage string like "+0%" or "-15%"
   const rateValue = Math.round((finalSpeed - 1) * 100);
   const rateStr = rateValue !== 0 ? `${rateValue > 0 ? '+' : ''}${rateValue}%` : '';
-  
-  // Pitch: Hz string like "+5Hz" or "-10Hz"
-  // Edge-tts expects pitch in Hz, not percentage!
-  const pitchValue = Math.round(finalPitch * 2); // Convert percentage to Hz
+
+  const pitchValue = Math.round(finalPitch * 2); // percentage → Hz
   const pitchStr = pitchValue !== 0 ? `${pitchValue > 0 ? '+' : ''}${pitchValue}Hz` : '';
 
-  console.log(`📊 Speed: ${finalSpeed.toFixed(2)}x (${rateStr}), Pitch: ${finalPitch}% (${pitchStr})`);
+  console.log(
+    `📊 Speed: ${finalSpeed.toFixed(2)}x (${rateStr}), Pitch: ${finalPitch}% (${pitchStr})` +
+    ` | fillers:${enrichment.fillerCount} elong:${enrichment.elongationCount} caps:${enrichment.capsEmphasis}`
+  );
 
-  return { text: processed, lang, emotion, finalSpeed, finalPitch, rateStr, pitchStr };
+  return {
+    text: processed,
+    lang,
+    emotion,
+    finalSpeed,
+    finalPitch,
+    rateStr,
+    pitchStr,
+    capsEmphasis: enrichment.capsEmphasis,
+    capsWords: enrichment.capsWords,
+    fillerCount: enrichment.fillerCount,
+    elongationCount: enrichment.elongationCount,
+  };
 }
 
 // ============================================================
-//  EDGE-TTS WRAPPER (USING V7's WORKING APPROACH)
+//  EDGE-TTS WRAPPER
 // ============================================================
 function edgeTTS(voice, text, outputFile, rate = '', pitch = '') {
   return new Promise((resolve, reject) => {
-    // Escape double quotes in text
     const escapedText = text.replace(/"/g, '\\"');
-    
-    // Build command using python3 -m edge_tts (v7 approach)
+
     let cmd = `python3 -m edge_tts --voice "${voice}" --text "${escapedText}" --write-media "${outputFile}"`;
-    
-    if (rate) {
-      cmd += ` --rate "${rate}"`;
-    }
-    
-    if (pitch) {
-      cmd += ` --pitch "${pitch}"`;
-    }
-    
+    if (rate) cmd += ` --rate "${rate}"`;
+    if (pitch) cmd += ` --pitch "${pitch}"`;
+
     console.log(`🔊 Generating: ${path.basename(outputFile)}`);
     console.log(`📝 Text length: ${text.length} chars`);
     console.log(`⚡ Rate: ${rate || 'default'}, Pitch: ${pitch || 'default'}`);
-    
+
     exec(cmd, (error, stdout, stderr) => {
       if (error) {
         console.error('❌ Edge-TTS error:', error.message);
@@ -546,9 +652,9 @@ function loadCacheDB() {
 }
 function saveCacheDB(db) { fs.writeFileSync(CACHE_DB_PATH, JSON.stringify(db, null, 2)); }
 
-function getCacheEntry(text, voice, speed, pitch, mode, format) {
+function getCacheEntry(text, voice, speed, pitch, mode, format, extras = '') {
   const db = loadCacheDB();
-  const key = crypto.createHash('sha256').update(`${text}|${voice}|${speed}|${pitch}|${mode}|${format}`).digest('hex');
+  const key = crypto.createHash('sha256').update(`${text}|${voice}|${speed}|${pitch}|${mode}|${format}|${extras}`).digest('hex');
   const entry = db.entries.find(e => e.key === key);
   if (entry && fs.existsSync(entry.filepath)) {
     entry.play_count = (entry.play_count || 0) + 1;
@@ -558,9 +664,9 @@ function getCacheEntry(text, voice, speed, pitch, mode, format) {
   }
   return null;
 }
-function addCacheEntry(text, voice, speed, pitch, mode, format, filepath, duration, size) {
+function addCacheEntry(text, voice, speed, pitch, mode, format, filepath, duration, size, extras = '') {
   const db = loadCacheDB();
-  const key = crypto.createHash('sha256').update(`${text}|${voice}|${speed}|${pitch}|${mode}|${format}`).digest('hex');
+  const key = crypto.createHash('sha256').update(`${text}|${voice}|${speed}|${pitch}|${mode}|${format}|${extras}`).digest('hex');
   db.entries = db.entries.filter(e => e.key !== key);
   db.entries.push({
     key,
@@ -648,15 +754,36 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
 });
 
 // ============================================================
-//  MAIN TTS ENDPOINT (FIXED rate/pitch format)
+//  MAIN TTS ENDPOINT (v1 enrichment + Lab flags)
 // ============================================================
 app.post('/api/tts', async (req, res) => {
   try {
-    let { text, voice, type = 'realistic', speed = 1.0, pitch = 0, mode = 'story', emotion, characters, user_pronunciation } = req.body;
+    let {
+      text,
+      voice,
+      type = 'realistic',
+      speed = 1.0,
+      pitch = 0,
+      mode = 'story',
+      emotion,
+      characters,
+      user_pronunciation,
+      // ⭐ NEW — Lab / v1 flags
+      capsAwareness = true,
+      fillersOn = true,
+      elongationOn = true,
+      v2Engine = false,
+    } = req.body;
+
     if (!text) return res.status(400).json({ error: 'Text required' });
 
     if (type === 'robotic') return res.json({ success: true, robotic: true, text, voice });
     if (type === 'xtts') return res.status(400).json({ error: 'XTTS not in this route, use /api/elevenlabs/tts' });
+
+    // v2 not yet wired — log and fall through to v1
+    if (v2Engine) {
+      console.log('⚠️  v2Engine requested but not implemented yet — falling back to v1 pipeline');
+    }
 
     // Auto-select voice if not provided
     if (!voice) {
@@ -673,8 +800,11 @@ app.post('/api/tts', async (req, res) => {
       voice = fallback;
     }
 
+    // Cache key includes v1 flags so outputs don't collide
+    const extras = `${capsAwareness ? 'c1' : 'c0'}${fillersOn ? 'f1' : 'f0'}${elongationOn ? 'e1' : 'e0'}${v2Engine ? 'v2' : 'v1'}`;
+
     // Check cache
-    const cacheEntry = getCacheEntry(text, voice, speed, pitch, mode, 'mp3');
+    const cacheEntry = getCacheEntry(text, voice, speed, pitch, mode, 'mp3', extras);
     if (cacheEntry) {
       return res.json({
         success: true,
@@ -689,15 +819,25 @@ app.post('/api/tts', async (req, res) => {
       });
     }
 
-    // Process text and get rate/pitch strings
-    const { text: processedText, lang, emotion: detectedEmotion, rateStr, pitchStr } = processText({
-      text, voice, speed, pitch, mode, emotion, characterMap: characters, userPronunciation: user_pronunciation,
+    // Process text with v1 enrichment
+    const processed = processText({
+      text,
+      voice,
+      speed,
+      pitch,
+      mode,
+      emotion,
+      characterMap: characters,
+      userPronunciation: user_pronunciation,
+      capsAwareness,
+      fillersOn,
+      elongationOn,
     });
 
     // Generate audio
     const filename = `${type}_${uuidv4()}.mp3`;
     const filepath = path.join(__dirname, 'audio', filename);
-    await edgeTTS(voice, processedText, filepath, rateStr, pitchStr);
+    await edgeTTS(voice, processed.text, filepath, processed.rateStr, processed.pitchStr);
 
     // Metadata
     const size = fs.statSync(filepath).size;
@@ -716,7 +856,7 @@ app.post('/api/tts', async (req, res) => {
     } catch {}
 
     // Cache
-    addCacheEntry(text, voice, speed, pitch, mode, 'mp3', filepath, duration, size);
+    addCacheEntry(text, voice, speed, pitch, mode, 'mp3', filepath, duration, size, extras);
 
     res.json({
       success: true,
@@ -724,12 +864,18 @@ app.post('/api/tts', async (req, res) => {
       cached: false,
       duration,
       voice,
-      language: lang,
+      language: processed.lang,
       size,
       format: 'mp3',
-      emotion: detectedEmotion,
-      rate: rateStr || 'default',
-      pitch: pitchStr || 'default',
+      emotion: processed.emotion,
+      rate: processed.rateStr || 'default',
+      pitch: processed.pitchStr || 'default',
+      // ⭐ NEW — v1 signal report (Lab uses these)
+      capsEmphasis: processed.capsEmphasis,
+      capsWords: processed.capsWords,
+      fillerCount: processed.fillerCount,
+      elongationCount: processed.elongationCount,
+      v2Engine: false,
     });
   } catch (e) {
     console.error('TTS error:', e);
@@ -745,6 +891,8 @@ app.get('/api/health', (req, res) => {
     realisticCount: REALISTIC_VOICES.length,
     fairCount: FAIR_VOICES.length,
     cacheEntries: db.entries.length,
+    modes: Object.keys(NARRATION_MODES),
+    v2Engine: false,
   });
 });
 
@@ -752,9 +900,9 @@ app.get('/api/health', (req, res) => {
 //  START SERVER
 // ============================================================
 app.listen(PORT, () => {
-  console.log(`🚀 HYEZEN TTS v10 running on port ${PORT}`);
+  console.log(`🚀 HYEZEN TTS v11 running on port ${PORT}`);
   console.log(`✅ Realistic: ${REALISTIC_VOICES.length} voices, Fair: ${FAIR_VOICES.length}`);
   console.log('✅ Modes:', Object.keys(NARRATION_MODES).join(', '));
-  console.log('✅ Using v7 edge-tts approach with correct rate/pitch format');
-  console.log('✅ Pitch uses Hz format (+5Hz, -10Hz) not percentage');
+  console.log('✅ V1 enrichment: fillers, elongation, caps awareness');
+  console.log('⚠️  V2 engine: stubbed — awaiting implementation');
 });
