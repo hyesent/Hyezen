@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen.onrender.com';
 
-// ── Translation targets ──────────────────────────────────────
 const TRANSLATE_LANGS = [
   { code: 'es', label: 'Spanish',    locale: 'es' },
   { code: 'fr', label: 'French',     locale: 'fr' },
@@ -36,17 +35,13 @@ const TRANSLATE_LANGS = [
   { code: 'hr', label: 'Croatian',   locale: 'hr' },
 ];
 
-// ── Translation engine (Google → MyMemory → Libre) ───────────
 const TR_CACHE = new Map();
 
 async function fetchWithTimeout(url, opts = {}, ms = 4500) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(url, { ...opts, signal: ctrl.signal });
-  } finally {
-    clearTimeout(t);
-  }
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
 }
 
 async function translateWithGoogle(text, target, source = 'auto') {
@@ -85,7 +80,6 @@ async function translateText(text, target, source = 'auto') {
   if (!text || !target || target === 'en' || text.trim().length < 2) return text;
   const key = `${source}::${target}::${text}`;
   if (TR_CACHE.has(key)) return TR_CACHE.get(key);
-
   const engines = [
     () => translateWithGoogle(text, target, source),
     () => translateWithMyMemory(text, target, source),
@@ -94,21 +88,14 @@ async function translateText(text, target, source = 'auto') {
   for (const engine of engines) {
     try {
       const out = await engine();
-      if (out && out !== text) {
-        TR_CACHE.set(key, out);
-        return out;
-      }
-    } catch (e) {
-      console.warn('[translate]', e.message);
-    }
+      if (out && out !== text) { TR_CACHE.set(key, out); return out; }
+    } catch (e) { console.warn('[translate]', e.message); }
   }
   TR_CACHE.set(key, text);
   return text;
 }
 
-// ── Voice matching helpers ───────────────────────────────────
 function voiceLocale(voiceName) {
-  // en-US-JennyNeural → 'en'
   if (!voiceName) return null;
   const m = voiceName.match(/^([a-z]{2})-/);
   return m ? m[1] : null;
@@ -125,7 +112,10 @@ function pickVoiceForLang(voices, langCode) {
   return match ? match.name : null;
 }
 
-// ═══════════════════════════════════════════════════════════
+function prettyMode(m) {
+  return (m || 'story').replace(/_/g, ' ').toUpperCase();
+}
+
 export default function App() {
   const [backendReady, setBackendReady] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('Starting HYEZEN...');
@@ -144,17 +134,17 @@ export default function App() {
   const [selectedMode, setSelectedMode] = useState('story');
   const [characters] = useState('{}');
 
-  // Translation
   const [translateOn, setTranslateOn] = useState(false);
   const [targetLang, setTargetLang] = useState('es');
-  const [showTranslateModal, setShowTranslateModal] = useState(false);
   const [showOriginal, setShowOriginal] = useState(true);
 
-  // Voice-match prompt
-  const [voicePrompt, setVoicePrompt] = useState(null);
-  // { originalText, translatedText, suggestedVoiceName, suggestedVoiceLabel, currentVoiceLabel }
+  // Modals
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [showModeModal, setShowModeModal] = useState(false);
+  const [showTranslateModal, setShowTranslateModal] = useState(false);
 
-  // Nav visibility
+  const [voicePrompt, setVoicePrompt] = useState(null);
+
   const [navVisible, setNavVisible] = useState(true);
   const navTimer = useRef(null);
 
@@ -205,7 +195,7 @@ export default function App() {
     if (!backendReady) return;
     fetchVoices(activeTab);
     fetchModes();
-    setChat([{ type: 'bot', text: `Welcome to ${themes[activeTab].name}. Tap a voice card below to preview.` }]);
+    setChat([{ type: 'bot', text: `Welcome to ${themes[activeTab].name}. Tap the VOICE pill above to pick a voice.` }]);
     setVoiceId('');
   }, [activeTab, backendReady]);
 
@@ -294,7 +284,6 @@ export default function App() {
     document.body.removeChild(a);
   }
 
-  // ── Core send: translate → optionally confirm voice → TTS ──
   async function sendText() {
     if (!text.trim() || loading) return;
     const currentText = text.trim();
@@ -303,7 +292,6 @@ export default function App() {
     setLoading(true);
 
     try {
-      // ── Translate (frontend only) ──
       let spokenText = currentText;
       let didTranslate = false;
 
@@ -314,12 +302,9 @@ export default function App() {
             spokenText = translated;
             didTranslate = true;
           }
-        } catch (e) {
-          console.warn('translate failed, using original:', e.message);
-        }
+        } catch (e) { console.warn('translate failed, using original:', e.message); }
       }
 
-      // ── Voice match check ──
       const currentLocale = voiceLocale(voice);
       const suggested = pickVoiceForLang(voices, targetLang);
       const needsVoicePrompt =
@@ -342,19 +327,13 @@ export default function App() {
         return;
       }
 
-      await finalizeTTS({
-        originalText: currentText,
-        spokenText,
-        didTranslate,
-        useVoice: voice,
-      });
+      await finalizeTTS({ originalText: currentText, spokenText, didTranslate, useVoice: voice });
     } catch (err) {
       setChat(prev => [...prev, { type: 'bot', text: 'Error: ' + err.message }]);
       setLoading(false);
     }
   }
 
-  // Called after send, or after the voice-prompt resolves
   async function finalizeTTS({ originalText, spokenText, didTranslate, useVoice }) {
     setLoading(true);
     try {
@@ -422,7 +401,6 @@ export default function App() {
     setLoading(false);
   }
 
-  // Resolve the voice-match prompt
   async function resolveVoicePrompt(action) {
     if (!voicePrompt) return;
     const p = voicePrompt;
@@ -506,7 +484,6 @@ export default function App() {
     });
   }
 
-  // ══════════ LOADING SCREEN ══════════
   if (!backendReady) {
     return (
       <div style={{
@@ -519,14 +496,11 @@ export default function App() {
       }}>
         <div style={{
           background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-          WebkitBackgroundClip: 'text',
-          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text', backgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           fontSize: 'clamp(32px, 8vw, 48px)',
-          fontWeight: '800',
-          letterSpacing: '0.15em',
-          marginBottom: '32px',
-          textAlign: 'center',
+          fontWeight: '800', letterSpacing: '0.15em',
+          marginBottom: '32px', textAlign: 'center',
         }}>HYEZEN</div>
         <div style={{
           width: '56px', height: '56px',
@@ -538,15 +512,13 @@ export default function App() {
         }} />
         <div style={{
           fontSize: '13px', opacity: 0.65, textAlign: 'center',
-          maxWidth: '320px', lineHeight: '1.5',
-          letterSpacing: '0.03em',
+          maxWidth: '320px', lineHeight: '1.5', letterSpacing: '0.03em',
         }}>{loadingStatus}</div>
         <style>{`@keyframes hx-spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
-  // ══════════ MAIN ══════════
   return (
     <div style={{
       width: '100%', height: '100vh',
@@ -556,41 +528,57 @@ export default function App() {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     }}>
       <style>{`
-        .hx-header { background: rgba(17,27,33,0.9); padding: 14px 16px 18px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
-        .hx-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+        .hx-header { background: rgba(17,27,33,0.9); padding: 12px 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
+        .hx-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .hx-logo { font-size: 14px; font-weight: 800; letter-spacing: 0.25em; background: linear-gradient(90deg, #00a884, #25d366); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
         .hx-engine-name { font-size: 11px; opacity: 0.5; letter-spacing: 0.1em; }
 
         .hx-labels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 4px; }
         .hx-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.2em; color: #8696a0; text-align: center; opacity: 0.65; }
 
-        .hx-pills-row { position: relative; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding-top: 30px; }
+        .hx-pills-row { position: relative; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding-top: 24px; }
 
-        .hx-connector { position: absolute; top: 0; width: 60px; height: 30px; overflow: visible; pointer-events: none; }
+        .hx-connector { position: absolute; top: 0; width: 60px; height: 24px; overflow: visible; pointer-events: none; }
         .hx-conn-voice { left: calc(16.66% - 30px); }
         .hx-conn-modes { left: calc(50% - 30px); }
         .hx-conn-translation { left: calc(83.33% - 30px); }
-        .hx-wire { fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4 6; animation: hx-pulse 1.8s linear infinite; }
+        .hx-wire { fill: none; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4 6; animation: hx-pulse 1.8s linear infinite; }
         .hx-conn-voice .hx-wire { stroke: #00a884; }
         .hx-conn-modes .hx-wire { stroke: #a855f7; }
         .hx-conn-translation .hx-wire { stroke: #3b82f6; }
         .hx-conn-translation.off .hx-wire { stroke: #4b5563; opacity: 0.3; animation: none; }
         @keyframes hx-pulse { to { stroke-dashoffset: -20; } }
 
-        .hx-chain-line { position: absolute; top: 62px; left: 16.66%; right: 16.66%; height: 1.4px; background: linear-gradient(90deg, transparent, #00a884 15%, #a855f7 50%, #3b82f6 85%, transparent); background-size: 200% 100%; animation: hx-chain-flow 3s linear infinite; opacity: 0.5; z-index: 0; }
+        .hx-chain-line { position: absolute; top: 50px; left: 16.66%; right: 16.66%; height: 1.3px; background: linear-gradient(90deg, transparent, #00a884 15%, #a855f7 50%, #3b82f6 85%, transparent); background-size: 200% 100%; animation: hx-chain-flow 3s linear infinite; opacity: 0.5; z-index: 0; }
         @keyframes hx-chain-flow { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 
-        .hx-pill { position: relative; z-index: 1; padding: 9px 8px; border-radius: 999px; background: #1e2830; font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-align: center; color: #e9edef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1.4px solid transparent; transition: transform 0.2s; }
+        .hx-pill {
+          position: relative; z-index: 1;
+          padding: 6px 8px;
+          border-radius: 999px;
+          background: #1e2830;
+          font-size: 10.5px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-align: center;
+          color: #e9edef;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          border: 1.2px solid transparent;
+          transition: transform 0.2s;
+          line-height: 1.2;
+        }
         .hx-pill-voice { border-color: #00a884; animation: hx-neon-green 2.4s ease-in-out infinite; cursor: pointer; }
         .hx-pill-modes { border-color: #a855f7; animation: hx-neon-purple 2.4s ease-in-out infinite; cursor: pointer; opacity: 0.92; }
         .hx-pill-translation { border-color: #3b82f6; animation: hx-neon-blue 2.4s ease-in-out infinite; cursor: pointer; }
         .hx-pill-translation.off { border-color: #4b5563; animation: none; box-shadow: none; opacity: 0.55; }
 
-        @keyframes hx-neon-green { 0%,100% { box-shadow: 0 0 0 1px rgba(0,168,132,0.35), 0 0 10px rgba(0,168,132,0.3), inset 0 0 6px rgba(0,168,132,0.1); } 50% { box-shadow: 0 0 0 1px rgba(0,168,132,0.7), 0 0 18px rgba(0,168,132,0.6), inset 0 0 10px rgba(0,168,132,0.22); } }
-        @keyframes hx-neon-purple { 0%,100% { box-shadow: 0 0 0 1px rgba(168,85,247,0.35), 0 0 10px rgba(168,85,247,0.3), inset 0 0 6px rgba(168,85,247,0.1); } 50% { box-shadow: 0 0 0 1px rgba(168,85,247,0.7), 0 0 18px rgba(168,85,247,0.6), inset 0 0 10px rgba(168,85,247,0.22); } }
-        @keyframes hx-neon-blue { 0%,100% { box-shadow: 0 0 0 1px rgba(59,130,246,0.35), 0 0 10px rgba(59,130,246,0.3), inset 0 0 6px rgba(59,130,246,0.1); } 50% { box-shadow: 0 0 0 1px rgba(59,130,246,0.7), 0 0 18px rgba(59,130,246,0.6), inset 0 0 10px rgba(59,130,246,0.22); } }
+        @keyframes hx-neon-green { 0%,100% { box-shadow: 0 0 0 1px rgba(0,168,132,0.35), 0 0 8px rgba(0,168,132,0.3), inset 0 0 5px rgba(0,168,132,0.1); } 50% { box-shadow: 0 0 0 1px rgba(0,168,132,0.7), 0 0 14px rgba(0,168,132,0.6), inset 0 0 8px rgba(0,168,132,0.22); } }
+        @keyframes hx-neon-purple { 0%,100% { box-shadow: 0 0 0 1px rgba(168,85,247,0.35), 0 0 8px rgba(168,85,247,0.3), inset 0 0 5px rgba(168,85,247,0.1); } 50% { box-shadow: 0 0 0 1px rgba(168,85,247,0.7), 0 0 14px rgba(168,85,247,0.6), inset 0 0 8px rgba(168,85,247,0.22); } }
+        @keyframes hx-neon-blue { 0%,100% { box-shadow: 0 0 0 1px rgba(59,130,246,0.35), 0 0 8px rgba(59,130,246,0.3), inset 0 0 5px rgba(59,130,246,0.1); } 50% { box-shadow: 0 0 0 1px rgba(59,130,246,0.7), 0 0 14px rgba(59,130,246,0.6), inset 0 0 8px rgba(59,130,246,0.22); } }
 
-        .hx-pill-voice:hover, .hx-pill-modes:hover, .hx-pill-translation:hover { transform: translateY(-2px); }
+        .hx-pill-voice:hover, .hx-pill-modes:hover, .hx-pill-translation:hover { transform: translateY(-1px); }
         .hx-pill-voice:active, .hx-pill-modes:active, .hx-pill-translation:active { transform: translateY(0) scale(0.97); }
 
         .hx-nav { display: flex; gap: 6px; padding: 7px 12px; margin: 10px 16px 0; border-radius: 999px; background: rgba(30,40,48,0.6); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 4px 20px rgba(0,0,0,0.35); overflow-x: auto; scrollbar-width: none; transition: transform 0.35s ease, opacity 0.35s ease; }
@@ -600,14 +588,8 @@ export default function App() {
         .hx-nav-tab:hover { color: #e9edef; background: rgba(255,255,255,0.05); }
         .hx-nav-tab.active { background: rgba(0,168,132,0.18); color: #00a884; box-shadow: inset 0 0 0 1px rgba(0,168,132,0.35); }
 
-        .hx-voice-strip { padding: 0 16px 10px; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
-        .hx-voice-strip::-webkit-scrollbar { display: none; }
-        .hx-voice-card { flex: 0 0 auto; min-width: 100px; max-width: 140px; padding: 8px 10px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1.4px solid transparent; cursor: pointer; transition: all 0.2s; }
-        .hx-voice-card.active { border-color: #00a884; background: rgba(0,168,132,0.12); box-shadow: 0 0 14px rgba(0,168,132,0.4); }
-        .hx-voice-card:hover { transform: translateY(-2px); }
-
         .hx-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
-        .hx-modal { background: #111b21; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 22px; max-width: 520px; width: 100%; max-height: 70vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); box-sizing: border-box; }
+        .hx-modal { background: #111b21; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 22px; max-width: 520px; width: 100%; max-height: 75vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); box-sizing: border-box; }
         .hx-modal h3 { font-size: 11px; letter-spacing: 0.2em; font-weight: 700; color: #8696a0; margin: 0 0 14px; text-transform: uppercase; }
         .hx-modal p { font-size: 14px; line-height: 1.55; color: #e9edef; margin: 0 0 18px; }
         .hx-modal-grid { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -615,6 +597,7 @@ export default function App() {
         .hx-modal-pill:hover { background: #2a3942; transform: translateY(-1px); }
         .hx-modal-pill.active { border-color: #00a884; background: rgba(0,168,132,0.15); color: #00a884; box-shadow: 0 0 12px rgba(0,168,132,0.35); }
         .hx-modal-pill.blue.active { border-color: #3b82f6; background: rgba(59,130,246,0.15); color: #3b82f6; box-shadow: 0 0 12px rgba(59,130,246,0.35); }
+        .hx-modal-pill.purple.active { border-color: #a855f7; background: rgba(168,85,247,0.15); color: #a855f7; box-shadow: 0 0 12px rgba(168,85,247,0.35); }
         .hx-modal-pill.off { border-color: #4b5563; color: #8696a0; }
 
         .hx-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
@@ -641,28 +624,18 @@ export default function App() {
         </div>
 
         <div className="hx-pills-row">
-          <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 20 L 40 20 L 40 40" className="hx-wire" /></svg>
-          <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 20 L 40 20 L 40 40" className="hx-wire" /></svg>
-          <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 20 L 40 20 L 40 40" className="hx-wire" /></svg>
+          <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 15 L 40 15 L 40 40" className="hx-wire" /></svg>
+          <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 15 L 40 15 L 40 40" className="hx-wire" /></svg>
+          <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 15 L 40 15 L 40 40" className="hx-wire" /></svg>
 
           <div className="hx-chain-line" />
 
-          <div className="hx-pill hx-pill-voice" onClick={() => {
-            if (voices.length === 0) return;
-            const idx = voices.findIndex(v => v.name === voice);
-            const next = voices[(idx + 1) % voices.length];
-            previewVoice(next.name);
-          }}>
+          <div className="hx-pill hx-pill-voice" onClick={() => setShowVoiceModal(true)}>
             {voiceLabel(voices, voice).toUpperCase()}
           </div>
 
-          <div className="hx-pill hx-pill-modes" onClick={() => {
-            if (modes.length === 0) return;
-            const idx = modes.indexOf(selectedMode);
-            const next = modes[(idx + 1) % modes.length];
-            setSelectedMode(next);
-          }}>
-            {(selectedMode || 'story').toUpperCase()}
+          <div className="hx-pill hx-pill-modes" onClick={() => setShowModeModal(true)}>
+            {prettyMode(selectedMode)}
           </div>
 
           <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => setShowTranslateModal(true)}>
@@ -715,18 +688,6 @@ export default function App() {
         <div ref={chatEndRef} />
       </div>
 
-      {/* ══ VOICE STRIP ══ */}
-      {activeTab !== 'elevenlabs' && voices.length > 0 && (
-        <div className="hx-voice-strip">
-          {voices.map(v => (
-            <div key={v.name} className={`hx-voice-card ${voice === v.name ? 'active' : ''}`} onClick={() => previewVoice(v.name)}>
-              <div style={{ fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.label}</div>
-              <div style={{ fontSize: '10px', opacity: 0.6, marginTop: '2px' }}>Tap to preview</div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* ══ INPUT ══ */}
       <div style={{ background: 'rgba(20,20,30,0.85)', backdropFilter: 'blur(20px)', padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
         {activeTab === 'elevenlabs' && !voiceId ? (
@@ -760,10 +721,7 @@ export default function App() {
                   </span>
                 )}
                 {translateOn && (
-                  <button
-                    className={`hx-toggle ${showOriginal ? 'on' : ''}`}
-                    onClick={() => setShowOriginal(!showOriginal)}
-                  >
+                  <button className={`hx-toggle ${showOriginal ? 'on' : ''}`} onClick={() => setShowOriginal(!showOriginal)}>
                     {showOriginal ? 'Show original' : 'Translated only'}
                   </button>
                 )}
@@ -796,6 +754,58 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* ══ VOICE MODAL ══ */}
+      {showVoiceModal && (
+        <div className="hx-modal-backdrop" onClick={() => setShowVoiceModal(false)}>
+          <div className="hx-modal" onClick={e => e.stopPropagation()}>
+            <h3>Choose voice</h3>
+            {activeTab === 'elevenlabs' ? (
+              <p style={{ fontSize: '13px', color: '#8696a0' }}>
+                {voiceId ? 'Voice cloned. Speaking in your cloned voice.' : 'Record a sample first — hold the button below.'}
+              </p>
+            ) : voices.length === 0 ? (
+              <p style={{ fontSize: '13px', color: '#8696a0' }}>No voices available.</p>
+            ) : (
+              <div className="hx-modal-grid">
+                {voices.map(v => (
+                  <button
+                    key={v.name}
+                    className={`hx-modal-pill ${voice === v.name ? 'active' : ''}`}
+                    onClick={() => { previewVoice(v.name); setShowVoiceModal(false); }}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODE MODAL ══ */}
+      {showModeModal && (
+        <div className="hx-modal-backdrop" onClick={() => setShowModeModal(false)}>
+          <div className="hx-modal" onClick={e => e.stopPropagation()}>
+            <h3>Narration mode</h3>
+            {modes.length === 0 ? (
+              <p style={{ fontSize: '13px', color: '#8696a0' }}>No modes available.</p>
+            ) : (
+              <div className="hx-modal-grid">
+                {modes.map(m => (
+                  <button
+                    key={m}
+                    className={`hx-modal-pill purple ${selectedMode === m ? 'active' : ''}`}
+                    onClick={() => { setSelectedMode(m); setShowModeModal(false); }}
+                  >
+                    {m.replace(/_/g, ' ')}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ══ TRANSLATE MODAL ══ */}
       {showTranslateModal && (
