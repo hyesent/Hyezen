@@ -1183,20 +1183,20 @@ export default function App() {
       </div>
 
       {/* ══ MAIN VIEW ══ */}
-      {isStudio ? (
-        <Studio
-          API_URL={API_URL}
-          voices={voices}
-          modes={modes}
-          activeTab={activeTab}
-          translateOn={translateOn}
-          targetLang={targetLang}
-          onSaveToLibrary={saveToLibrary}
-          onTranslate={translateText}
-          triggerDownload={triggerDownload}
-          voiceLabel={voiceLabel}
-          prettyMode={prettyMode}
-        />
+      <Studio
+       API_URL={API_URL}
+      voices={voices}
+       modes={modes}
+       activeTab={activeTab}
+        translateOn={translateOn}
+        targetLang={targetLang}
+        presets={presets}         
+         onSaveToLibrary={saveToLibrary}
+         onTranslate={translateText}
+         triggerDownload={triggerDownload}
+         voiceLabel={voiceLabel}
+         prettyMode={prettyMode}
+             />>
       ) : (
         <>
           {/* ══ CHAT ══ */}
