@@ -2,39 +2,66 @@ import { useState, useEffect, useRef } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen.onrender.com';
 
-const TRANSLATE_LANGS = [
-  { code: 'es', label: 'Spanish',    locale: 'es' },
-  { code: 'fr', label: 'French',     locale: 'fr' },
-  { code: 'de', label: 'German',     locale: 'de' },
-  { code: 'it', label: 'Italian',    locale: 'it' },
-  { code: 'pt', label: 'Portuguese', locale: 'pt' },
-  { code: 'ru', label: 'Russian',    locale: 'ru' },
-  { code: 'nl', label: 'Dutch',      locale: 'nl' },
-  { code: 'pl', label: 'Polish',     locale: 'pl' },
-  { code: 'tr', label: 'Turkish',    locale: 'tr' },
-  { code: 'ar', label: 'Arabic',     locale: 'ar' },
-  { code: 'he', label: 'Hebrew',     locale: 'he' },
-  { code: 'hi', label: 'Hindi',      locale: 'hi' },
-  { code: 'ja', label: 'Japanese',   locale: 'ja' },
-  { code: 'ko', label: 'Korean',     locale: 'ko' },
-  { code: 'zh', label: 'Chinese',    locale: 'zh' },
-  { code: 'id', label: 'Indonesian', locale: 'id' },
-  { code: 'ms', label: 'Malay',      locale: 'ms' },
-  { code: 'vi', label: 'Vietnamese', locale: 'vi' },
-  { code: 'th', label: 'Thai',       locale: 'th' },
-  { code: 'sv', label: 'Swedish',    locale: 'sv' },
-  { code: 'da', label: 'Danish',     locale: 'da' },
-  { code: 'nb', label: 'Norwegian',  locale: 'nb' },
-  { code: 'fi', label: 'Finnish',    locale: 'fi' },
-  { code: 'cs', label: 'Czech',      locale: 'cs' },
-  { code: 'hu', label: 'Hungarian',  locale: 'hu' },
-  { code: 'el', label: 'Greek',      locale: 'el' },
-  { code: 'ro', label: 'Romanian',   locale: 'ro' },
-  { code: 'sk', label: 'Slovak',     locale: 'sk' },
-  { code: 'sl', label: 'Slovenian',  locale: 'sl' },
-  { code: 'hr', label: 'Croatian',   locale: 'hr' },
-];
+// ── Continent + language metadata ────────────────────────────
+const LANG_META = {
+  es: { label: 'Spanish',    continent: 'Europe'   },
+  fr: { label: 'French',     continent: 'Europe'   },
+  de: { label: 'German',     continent: 'Europe'   },
+  it: { label: 'Italian',    continent: 'Europe'   },
+  pt: { label: 'Portuguese', continent: 'Europe'   },
+  ru: { label: 'Russian',    continent: 'Europe'   },
+  nl: { label: 'Dutch',      continent: 'Europe'   },
+  pl: { label: 'Polish',     continent: 'Europe'   },
+  sv: { label: 'Swedish',    continent: 'Europe'   },
+  da: { label: 'Danish',     continent: 'Europe'   },
+  nb: { label: 'Norwegian',  continent: 'Europe'   },
+  fi: { label: 'Finnish',    continent: 'Europe'   },
+  cs: { label: 'Czech',      continent: 'Europe'   },
+  hu: { label: 'Hungarian',  continent: 'Europe'   },
+  el: { label: 'Greek',      continent: 'Europe'   },
+  ro: { label: 'Romanian',   continent: 'Europe'   },
+  sk: { label: 'Slovak',     continent: 'Europe'   },
+  sl: { label: 'Slovenian',  continent: 'Europe'   },
+  hr: { label: 'Croatian',   continent: 'Europe'   },
+  tr: { label: 'Turkish',    continent: 'Asia'     },
+  ar: { label: 'Arabic',     continent: 'Asia'     },
+  he: { label: 'Hebrew',     continent: 'Asia'     },
+  hi: { label: 'Hindi',      continent: 'Asia'     },
+  ja: { label: 'Japanese',   continent: 'Asia'     },
+  ko: { label: 'Korean',     continent: 'Asia'     },
+  zh: { label: 'Chinese',    continent: 'Asia'     },
+  id: { label: 'Indonesian', continent: 'Asia'     },
+  ms: { label: 'Malay',      continent: 'Asia'     },
+  vi: { label: 'Vietnamese', continent: 'Asia'     },
+  th: { label: 'Thai',       continent: 'Asia'     },
+  af: { label: 'Afrikaans',  continent: 'Africa'   },
+  sw: { label: 'Swahili',    continent: 'Africa'   },
+  yo: { label: 'Yoruba',     continent: 'Africa'   },
+  ig: { label: 'Igbo',       continent: 'Africa'   },
+  ha: { label: 'Hausa',      continent: 'Africa'   },
+  zu: { label: 'Zulu',       continent: 'Africa'   },
+  am: { label: 'Amharic',    continent: 'Africa'   },
+};
 
+// Order continents as they'll appear in the modal
+const CONTINENT_ORDER = ['Africa', 'Asia', 'Europe', 'Americas', 'Oceania'];
+
+// Region code → continent (for voices like en-NG, fr-FR)
+const REGION_TO_CONTINENT = {
+  NG: 'Africa', KE: 'Africa', ZA: 'Africa', TZ: 'Africa', EG: 'Africa',
+  CN: 'Asia', JP: 'Asia', KR: 'Asia', SA: 'Asia', IN: 'Asia', SG: 'Asia',
+  PH: 'Asia', HK: 'Asia', IL: 'Asia', ID: 'Asia', MY: 'Asia', VN: 'Asia',
+  TH: 'Asia',
+  US: 'Americas', CA: 'Americas', MX: 'Americas', BR: 'Americas', AR: 'Americas',
+  GB: 'Europe', IE: 'Europe', FR: 'Europe', DE: 'Europe', ES: 'Europe',
+  IT: 'Europe', PT: 'Europe', RU: 'Europe', NL: 'Europe', PL: 'Europe',
+  DK: 'Europe', SE: 'Europe', NO: 'Europe', FI: 'Europe', CZ: 'Europe',
+  HU: 'Europe', GR: 'Europe', RO: 'Europe', SK: 'Europe', SI: 'Europe',
+  HR: 'Europe',
+  AU: 'Oceania', NZ: 'Oceania',
+};
+
+// ── Translation engine ───────────────────────────────────────
 const TR_CACHE = new Map();
 
 async function fetchWithTimeout(url, opts = {}, ms = 4500) {
@@ -95,9 +122,16 @@ async function translateText(text, target, source = 'auto') {
   return text;
 }
 
+// ── Voice helpers ────────────────────────────────────────────
 function voiceLocale(voiceName) {
   if (!voiceName) return null;
   const m = voiceName.match(/^([a-z]{2})-/);
+  return m ? m[1] : null;
+}
+
+function voiceRegion(voiceName) {
+  if (!voiceName) return null;
+  const m = voiceName.match(/^[a-z]{2}-([A-Z]{2})/);
   return m ? m[1] : null;
 }
 
@@ -114,6 +148,29 @@ function pickVoiceForLang(voices, langCode) {
 
 function prettyMode(m) {
   return (m || 'story').replace(/_/g, ' ').toUpperCase();
+}
+
+// Group a list of items by continent.
+// getContinent(item) returns a continent name or 'Other'
+function groupByContinent(items, getContinent) {
+  const groups = {};
+  for (const item of items) {
+    const c = getContinent(item) || 'Other';
+    if (!groups[c]) groups[c] = [];
+    groups[c].push(item);
+  }
+  // Sort continents per CONTINENT_ORDER, then append 'Other' if any
+  const ordered = [];
+  for (const c of CONTINENT_ORDER) {
+    if (groups[c]) ordered.push({ continent: c, items: groups[c] });
+  }
+  if (groups.Other) ordered.push({ continent: 'Other', items: groups.Other });
+  // anything not in CONTINENT_ORDER but not 'Other' falls here too
+  const known = new Set([...CONTINENT_ORDER, 'Other']);
+  for (const c of Object.keys(groups)) {
+    if (!known.has(c)) ordered.push({ continent: c, items: groups[c] });
+  }
+  return ordered;
 }
 
 export default function App() {
@@ -138,10 +195,13 @@ export default function App() {
   const [targetLang, setTargetLang] = useState('es');
   const [showOriginal, setShowOriginal] = useState(true);
 
-  // Modals
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [showModeModal, setShowModeModal] = useState(false);
   const [showTranslateModal, setShowTranslateModal] = useState(false);
+
+  // Modal sort mode: 'continent' | 'alpha'
+  const [voiceSortMode, setVoiceSortMode] = useState('continent');
+  const [translateSortMode, setTranslateSortMode] = useState('continent');
 
   const [voicePrompt, setVoicePrompt] = useState(null);
 
@@ -209,12 +269,24 @@ export default function App() {
     speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
+  // ── Nav visibility: hybrid trigger (mouse + scroll + touch), idle 5s ──
   useEffect(() => {
-    setNavVisible(true);
-    if (navTimer.current) clearTimeout(navTimer.current);
-    navTimer.current = setTimeout(() => setNavVisible(false), 5000);
-    return () => { if (navTimer.current) clearTimeout(navTimer.current); };
-  }, [activeTab]);
+    function show() {
+      setNavVisible(true);
+      if (navTimer.current) clearTimeout(navTimer.current);
+      navTimer.current = setTimeout(() => setNavVisible(false), 5000);
+    }
+    show();
+    window.addEventListener('mousemove', show);
+    window.addEventListener('touchstart', show, { passive: true });
+    window.addEventListener('keydown', show);
+    return () => {
+      window.removeEventListener('mousemove', show);
+      window.removeEventListener('touchstart', show);
+      window.removeEventListener('keydown', show);
+      if (navTimer.current) clearTimeout(navTimer.current);
+    };
+  }, []);
 
   function handleChatScroll() {
     setNavVisible(true);
@@ -484,6 +556,32 @@ export default function App() {
     });
   }
 
+  // ── Build grouped lists for modals ───────────────────────────
+  function buildVoiceGroups() {
+    // Only group non-robotic voices (robotic has no locale)
+    if (activeTab === 'robotic' || activeTab === 'elevenlabs') {
+      return [{ continent: null, items: voices }];
+    }
+    if (voiceSortMode === 'alpha') {
+      return [{ continent: null, items: [...voices].sort((a, b) => a.name.localeCompare(b.name)) }];
+    }
+    return groupByContinent(voices, v => {
+      const region = voiceRegion(v.name);
+      return region ? REGION_TO_CONTINENT[region] : null;
+    });
+  }
+
+  function buildTranslateGroups() {
+    const items = Object.entries(LANG_META).map(([code, meta]) => ({ code, ...meta }));
+    if (translateSortMode === 'alpha') {
+      return [{ continent: null, items: items.sort((a, b) => a.code.localeCompare(b.code)) }];
+    }
+    return groupByContinent(items, i => i.continent);
+  }
+
+  const voiceGroups = buildVoiceGroups();
+  const translateGroups = buildTranslateGroups();
+
   if (!backendReady) {
     return (
       <div style={{
@@ -533,39 +631,39 @@ export default function App() {
         .hx-logo { font-size: 14px; font-weight: 800; letter-spacing: 0.25em; background: linear-gradient(90deg, #00a884, #25d366); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
         .hx-engine-name { font-size: 11px; opacity: 0.5; letter-spacing: 0.1em; }
 
-        .hx-labels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 4px; }
-        .hx-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.2em; color: #8696a0; text-align: center; opacity: 0.65; }
+        .hx-labels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 2px; }
+        .hx-label { font-size: 9px; font-weight: 700; letter-spacing: 0.22em; color: #8696a0; text-align: center; opacity: 0.65; }
 
-        .hx-pills-row { position: relative; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding-top: 24px; }
+        .hx-pills-row { position: relative; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding-top: 20px; }
 
-        .hx-connector { position: absolute; top: 0; width: 60px; height: 24px; overflow: visible; pointer-events: none; }
+        .hx-connector { position: absolute; top: 0; width: 60px; height: 20px; overflow: visible; pointer-events: none; }
         .hx-conn-voice { left: calc(16.66% - 30px); }
         .hx-conn-modes { left: calc(50% - 30px); }
         .hx-conn-translation { left: calc(83.33% - 30px); }
-        .hx-wire { fill: none; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4 6; animation: hx-pulse 1.8s linear infinite; }
+        .hx-wire { fill: none; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 3 5; animation: hx-pulse 1.8s linear infinite; }
         .hx-conn-voice .hx-wire { stroke: #00a884; }
         .hx-conn-modes .hx-wire { stroke: #a855f7; }
         .hx-conn-translation .hx-wire { stroke: #3b82f6; }
         .hx-conn-translation.off .hx-wire { stroke: #4b5563; opacity: 0.3; animation: none; }
         @keyframes hx-pulse { to { stroke-dashoffset: -20; } }
 
-        .hx-chain-line { position: absolute; top: 50px; left: 16.66%; right: 16.66%; height: 1.3px; background: linear-gradient(90deg, transparent, #00a884 15%, #a855f7 50%, #3b82f6 85%, transparent); background-size: 200% 100%; animation: hx-chain-flow 3s linear infinite; opacity: 0.5; z-index: 0; }
+        .hx-chain-line { position: absolute; top: 44px; left: 16.66%; right: 16.66%; height: 1.2px; background: linear-gradient(90deg, transparent, #00a884 15%, #a855f7 50%, #3b82f6 85%, transparent); background-size: 200% 100%; animation: hx-chain-flow 3s linear infinite; opacity: 0.5; z-index: 0; }
         @keyframes hx-chain-flow { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 
         .hx-pill {
           position: relative; z-index: 1;
-          padding: 6px 8px;
+          padding: 4px 8px;
           border-radius: 999px;
           background: #1e2830;
-          font-size: 10.5px;
+          font-size: 10px;
           font-weight: 700;
-          letter-spacing: 0.06em;
+          letter-spacing: 0.05em;
           text-align: center;
           color: #e9edef;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          border: 1.2px solid transparent;
+          border: 1.1px solid transparent;
           transition: transform 0.2s;
           line-height: 1.2;
         }
@@ -574,30 +672,81 @@ export default function App() {
         .hx-pill-translation { border-color: #3b82f6; animation: hx-neon-blue 2.4s ease-in-out infinite; cursor: pointer; }
         .hx-pill-translation.off { border-color: #4b5563; animation: none; box-shadow: none; opacity: 0.55; }
 
-        @keyframes hx-neon-green { 0%,100% { box-shadow: 0 0 0 1px rgba(0,168,132,0.35), 0 0 8px rgba(0,168,132,0.3), inset 0 0 5px rgba(0,168,132,0.1); } 50% { box-shadow: 0 0 0 1px rgba(0,168,132,0.7), 0 0 14px rgba(0,168,132,0.6), inset 0 0 8px rgba(0,168,132,0.22); } }
-        @keyframes hx-neon-purple { 0%,100% { box-shadow: 0 0 0 1px rgba(168,85,247,0.35), 0 0 8px rgba(168,85,247,0.3), inset 0 0 5px rgba(168,85,247,0.1); } 50% { box-shadow: 0 0 0 1px rgba(168,85,247,0.7), 0 0 14px rgba(168,85,247,0.6), inset 0 0 8px rgba(168,85,247,0.22); } }
-        @keyframes hx-neon-blue { 0%,100% { box-shadow: 0 0 0 1px rgba(59,130,246,0.35), 0 0 8px rgba(59,130,246,0.3), inset 0 0 5px rgba(59,130,246,0.1); } 50% { box-shadow: 0 0 0 1px rgba(59,130,246,0.7), 0 0 14px rgba(59,130,246,0.6), inset 0 0 8px rgba(59,130,246,0.22); } }
+        @keyframes hx-neon-green { 0%,100% { box-shadow: 0 0 0 1px rgba(0,168,132,0.35), 0 0 7px rgba(0,168,132,0.3), inset 0 0 4px rgba(0,168,132,0.1); } 50% { box-shadow: 0 0 0 1px rgba(0,168,132,0.7), 0 0 12px rgba(0,168,132,0.6), inset 0 0 7px rgba(0,168,132,0.22); } }
+        @keyframes hx-neon-purple { 0%,100% { box-shadow: 0 0 0 1px rgba(168,85,247,0.35), 0 0 7px rgba(168,85,247,0.3), inset 0 0 4px rgba(168,85,247,0.1); } 50% { box-shadow: 0 0 0 1px rgba(168,85,247,0.7), 0 0 12px rgba(168,85,247,0.6), inset 0 0 7px rgba(168,85,247,0.22); } }
+        @keyframes hx-neon-blue { 0%,100% { box-shadow: 0 0 0 1px rgba(59,130,246,0.35), 0 0 7px rgba(59,130,246,0.3), inset 0 0 4px rgba(59,130,246,0.1); } 50% { box-shadow: 0 0 0 1px rgba(59,130,246,0.7), 0 0 12px rgba(59,130,246,0.6), inset 0 0 7px rgba(59,130,246,0.22); } }
 
         .hx-pill-voice:hover, .hx-pill-modes:hover, .hx-pill-translation:hover { transform: translateY(-1px); }
         .hx-pill-voice:active, .hx-pill-modes:active, .hx-pill-translation:active { transform: translateY(0) scale(0.97); }
 
-        .hx-nav { display: flex; gap: 6px; padding: 7px 12px; margin: 10px 16px 0; border-radius: 999px; background: rgba(30,40,48,0.6); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 4px 20px rgba(0,0,0,0.35); overflow-x: auto; scrollbar-width: none; transition: transform 0.35s ease, opacity 0.35s ease; }
+        /* ── NAV: auto-fit centered capsule ── */
+        .hx-nav-wrap { display: flex; justify-content: center; margin: 10px 16px 0; }
+        .hx-nav {
+          display: inline-flex;
+          gap: 4px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(30,40,48,0.62);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border: 1px solid rgba(255,255,255,0.07);
+          box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+          scrollbar-width: none;
+          transition: transform 0.35s ease, opacity 0.35s ease;
+          max-width: 100%;
+          overflow-x: auto;
+        }
         .hx-nav::-webkit-scrollbar { display: none; }
-        .hx-nav.hidden { transform: translateY(-24px); opacity: 0; pointer-events: none; }
-        .hx-nav-tab { padding: 7px 13px; border-radius: 999px; border: none; background: transparent; color: #8696a0; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s; letter-spacing: 0.03em; }
+        .hx-nav.hidden { transform: translateY(-16px); opacity: 0; pointer-events: none; }
+        .hx-nav-tab {
+          padding: 6px 12px;
+          border-radius: 999px;
+          border: 1.2px solid transparent;
+          background: transparent;
+          color: #8696a0;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: all 0.2s;
+          letter-spacing: 0.03em;
+        }
         .hx-nav-tab:hover { color: #e9edef; background: rgba(255,255,255,0.05); }
-        .hx-nav-tab.active { background: rgba(0,168,132,0.18); color: #00a884; box-shadow: inset 0 0 0 1px rgba(0,168,132,0.35); }
+        .hx-nav-tab.active {
+          color: #00e6a8;
+          border-color: #00a884;
+          background: rgba(0,168,132,0.12);
+          box-shadow:
+            0 0 0 1px rgba(0,168,132,0.4),
+            0 0 10px rgba(0,168,132,0.55),
+            inset 0 0 8px rgba(0,168,132,0.2);
+          animation: hx-nav-neon 2.4s ease-in-out infinite;
+        }
+        @keyframes hx-nav-neon {
+          0%,100% { box-shadow: 0 0 0 1px rgba(0,168,132,0.4), 0 0 8px rgba(0,168,132,0.4), inset 0 0 6px rgba(0,168,132,0.15); }
+          50%     { box-shadow: 0 0 0 1px rgba(0,168,132,0.85), 0 0 16px rgba(0,168,132,0.7), inset 0 0 10px rgba(0,168,132,0.3); }
+        }
 
         .hx-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
-        .hx-modal { background: #111b21; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 22px; max-width: 520px; width: 100%; max-height: 75vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); box-sizing: border-box; }
-        .hx-modal h3 { font-size: 11px; letter-spacing: 0.2em; font-weight: 700; color: #8696a0; margin: 0 0 14px; text-transform: uppercase; }
+        .hx-modal { background: #111b21; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 20px; max-width: 560px; width: 100%; max-height: 78vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); box-sizing: border-box; }
+        .hx-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+        .hx-modal h3 { font-size: 11px; letter-spacing: 0.2em; font-weight: 700; color: #8696a0; margin: 0; text-transform: uppercase; }
         .hx-modal p { font-size: 14px; line-height: 1.55; color: #e9edef; margin: 0 0 18px; }
-        .hx-modal-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-        .hx-modal-pill { padding: 9px 16px; border-radius: 999px; background: #1e2830; border: 1.4px solid transparent; color: #e9edef; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all 0.18s; white-space: nowrap; letter-spacing: 0.02em; }
+
+        .hx-sort-toggle { display: inline-flex; background: #1e2830; border-radius: 999px; padding: 2px; }
+        .hx-sort-toggle button { padding: 5px 12px; border: none; background: transparent; color: #8696a0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; cursor: pointer; border-radius: 999px; transition: all 0.2s; }
+        .hx-sort-toggle button.active { background: rgba(0,168,132,0.18); color: #00a884; }
+
+        .hx-group { margin-bottom: 16px; }
+        .hx-group:last-child { margin-bottom: 0; }
+        .hx-group-title { font-size: 9.5px; letter-spacing: 0.22em; font-weight: 700; color: #8696a0; margin-bottom: 8px; opacity: 0.85; text-transform: uppercase; }
+
+        .hx-modal-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+        .hx-modal-pill { padding: 7px 13px; border-radius: 999px; background: #1e2830; border: 1.3px solid transparent; color: #e9edef; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.18s; white-space: nowrap; letter-spacing: 0.02em; }
         .hx-modal-pill:hover { background: #2a3942; transform: translateY(-1px); }
-        .hx-modal-pill.active { border-color: #00a884; background: rgba(0,168,132,0.15); color: #00a884; box-shadow: 0 0 12px rgba(0,168,132,0.35); }
-        .hx-modal-pill.blue.active { border-color: #3b82f6; background: rgba(59,130,246,0.15); color: #3b82f6; box-shadow: 0 0 12px rgba(59,130,246,0.35); }
-        .hx-modal-pill.purple.active { border-color: #a855f7; background: rgba(168,85,247,0.15); color: #a855f7; box-shadow: 0 0 12px rgba(168,85,247,0.35); }
+        .hx-modal-pill.active { border-color: #00a884; background: rgba(0,168,132,0.15); color: #00a884; box-shadow: 0 0 10px rgba(0,168,132,0.35); }
+        .hx-modal-pill.blue.active { border-color: #3b82f6; background: rgba(59,130,246,0.15); color: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.35); }
+        .hx-modal-pill.purple.active { border-color: #a855f7; background: rgba(168,85,247,0.15); color: #a855f7; box-shadow: 0 0 10px rgba(168,85,247,0.35); }
         .hx-modal-pill.off { border-color: #4b5563; color: #8696a0; }
 
         .hx-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
@@ -624,9 +773,9 @@ export default function App() {
         </div>
 
         <div className="hx-pills-row">
-          <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 15 L 40 15 L 40 40" className="hx-wire" /></svg>
-          <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 15 L 40 15 L 40 40" className="hx-wire" /></svg>
-          <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 15 L 40 15 L 40 40" className="hx-wire" /></svg>
+          <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" /></svg>
+          <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" /></svg>
+          <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" /></svg>
 
           <div className="hx-chain-line" />
 
@@ -639,18 +788,20 @@ export default function App() {
           </div>
 
           <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => setShowTranslateModal(true)}>
-            {translateOn ? (TRANSLATE_LANGS.find(l => l.code === targetLang)?.label.toUpperCase() || 'OFF') : 'OFF'}
+            {translateOn ? (LANG_META[targetLang]?.label.toUpperCase() || 'OFF') : 'OFF'}
           </div>
         </div>
       </div>
 
-      {/* ══ GLASS NAV ══ */}
-      <div className={`hx-nav ${!navVisible ? 'hidden' : ''}`}>
-        {tabs.map(t => (
-          <button key={t.id} className={`hx-nav-tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>
-            {t.name}
-          </button>
-        ))}
+      {/* ══ NAV (centered, auto-fit) ══ */}
+      <div className="hx-nav-wrap">
+        <div className={`hx-nav ${!navVisible ? 'hidden' : ''}`}>
+          {tabs.map(t => (
+            <button key={t.id} className={`hx-nav-tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>
+              {t.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ══ CHAT ══ */}
@@ -717,7 +868,7 @@ export default function App() {
                 {activeTab === 'elevenlabs' && voiceId && <span style={{ fontSize: '11.5px', color: '#0f0', letterSpacing: '0.03em' }}>Voice ready</span>}
                 {translateOn && (
                   <span style={{ fontSize: '11.5px', color: '#3b82f6', letterSpacing: '0.03em' }}>
-                    Speaking in {TRANSLATE_LANGS.find(l => l.code === targetLang)?.label}
+                    Speaking in {LANG_META[targetLang]?.label}
                   </span>
                 )}
                 {translateOn && (
@@ -759,7 +910,15 @@ export default function App() {
       {showVoiceModal && (
         <div className="hx-modal-backdrop" onClick={() => setShowVoiceModal(false)}>
           <div className="hx-modal" onClick={e => e.stopPropagation()}>
-            <h3>Choose voice</h3>
+            <div className="hx-modal-head">
+              <h3>Choose voice</h3>
+              {voices.length > 0 && activeTab !== 'elevenlabs' && activeTab !== 'robotic' && (
+                <div className="hx-sort-toggle">
+                  <button className={voiceSortMode === 'continent' ? 'active' : ''} onClick={() => setVoiceSortMode('continent')}>Continent</button>
+                  <button className={voiceSortMode === 'alpha' ? 'active' : ''} onClick={() => setVoiceSortMode('alpha')}>A–Z</button>
+                </div>
+              )}
+            </div>
             {activeTab === 'elevenlabs' ? (
               <p style={{ fontSize: '13px', color: '#8696a0' }}>
                 {voiceId ? 'Voice cloned. Speaking in your cloned voice.' : 'Record a sample first — hold the button below.'}
@@ -767,17 +926,22 @@ export default function App() {
             ) : voices.length === 0 ? (
               <p style={{ fontSize: '13px', color: '#8696a0' }}>No voices available.</p>
             ) : (
-              <div className="hx-modal-grid">
-                {voices.map(v => (
-                  <button
-                    key={v.name}
-                    className={`hx-modal-pill ${voice === v.name ? 'active' : ''}`}
-                    onClick={() => { previewVoice(v.name); setShowVoiceModal(false); }}
-                  >
-                    {v.label}
-                  </button>
-                ))}
-              </div>
+              voiceGroups.map((group, gi) => (
+                <div key={gi} className="hx-group">
+                  {group.continent && <div className="hx-group-title">{group.continent}</div>}
+                  <div className="hx-modal-grid">
+                    {group.items.map(v => (
+                      <button
+                        key={v.name}
+                        className={`hx-modal-pill ${voice === v.name ? 'active' : ''}`}
+                        onClick={() => { previewVoice(v.name); setShowVoiceModal(false); }}
+                      >
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
@@ -787,7 +951,9 @@ export default function App() {
       {showModeModal && (
         <div className="hx-modal-backdrop" onClick={() => setShowModeModal(false)}>
           <div className="hx-modal" onClick={e => e.stopPropagation()}>
-            <h3>Narration mode</h3>
+            <div className="hx-modal-head">
+              <h3>Narration mode</h3>
+            </div>
             {modes.length === 0 ? (
               <p style={{ fontSize: '13px', color: '#8696a0' }}>No modes available.</p>
             ) : (
@@ -811,24 +977,39 @@ export default function App() {
       {showTranslateModal && (
         <div className="hx-modal-backdrop" onClick={() => setShowTranslateModal(false)}>
           <div className="hx-modal" onClick={e => e.stopPropagation()}>
-            <h3>Speak in</h3>
-            <div className="hx-modal-grid">
+            <div className="hx-modal-head">
+              <h3>Speak in</h3>
+              <div className="hx-sort-toggle">
+                <button className={translateSortMode === 'continent' ? 'active' : ''} onClick={() => setTranslateSortMode('continent')}>Continent</button>
+                <button className={translateSortMode === 'alpha' ? 'active' : ''} onClick={() => setTranslateSortMode('alpha')}>A–Z</button>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
               <button
                 className={`hx-modal-pill off ${!translateOn ? 'active' : ''}`}
                 onClick={() => { setTranslateOn(false); setShowTranslateModal(false); }}
               >
                 Off
               </button>
-              {TRANSLATE_LANGS.map(l => (
-                <button
-                  key={l.code}
-                  className={`hx-modal-pill blue ${translateOn && targetLang === l.code ? 'active' : ''}`}
-                  onClick={() => { setTranslateOn(true); setTargetLang(l.code); setShowTranslateModal(false); }}
-                >
-                  {l.label}
-                </button>
-              ))}
             </div>
+
+            {translateGroups.map((group, gi) => (
+              <div key={gi} className="hx-group">
+                {group.continent && <div className="hx-group-title">{group.continent}</div>}
+                <div className="hx-modal-grid">
+                  {group.items.map(l => (
+                    <button
+                      key={l.code}
+                      className={`hx-modal-pill blue ${translateOn && targetLang === l.code ? 'active' : ''}`}
+                      onClick={() => { setTranslateOn(true); setTargetLang(l.code); setShowTranslateModal(false); }}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -839,7 +1020,7 @@ export default function App() {
           <div className="hx-modal" onClick={e => e.stopPropagation()}>
             <h3>Voice match</h3>
             <p>
-              You're about to speak <strong>{TRANSLATE_LANGS.find(l => l.code === targetLang)?.label}</strong> with
+              You're about to speak <strong>{LANG_META[targetLang]?.label}</strong> with
               an English voice (<strong>{voicePrompt.currentVoiceLabel}</strong>).
               <br /><br />
               Use the matching voice <strong>{voicePrompt.suggestedVoiceLabel}</strong> instead?
