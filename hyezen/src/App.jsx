@@ -167,7 +167,7 @@ function comboSummary(voices, voiceName, mode, translateOn, targetLang) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  INDEXEDDB — audio library (studio has its own store, bumps to v2)
+//  INDEXEDDB
 // ═══════════════════════════════════════════════════════════
 const DB_NAME = 'hyezen', DB_VERSION = 2, STORE = 'library';
 function openDB() {
@@ -357,7 +357,6 @@ export default function App() {
 
   useEffect(() => {
     if (!backendReady) return;
-    // Studio uses the same voice list but has its own UI; keep voices loaded for it too
     fetchVoices(activeTab);
     fetchModes();
     if (activeTab !== 'studio') {
@@ -410,7 +409,7 @@ export default function App() {
     if (!presetPopupOn) return;
     if (!userTouched) return;
     if (!voice || !selectedMode) return;
-    if (activeTab === 'studio') return; // Studio manages its own thing
+    if (activeTab === 'studio') return;
     if (showVoiceModal || showModeModal || showTranslateModal || showMenuModal) return;
     if (voicePrompt || namePrompt || presetPrompt) return;
 
@@ -436,7 +435,6 @@ export default function App() {
 
   async function fetchVoices(type) {
     try {
-      // Studio doesn't have its own voice endpoint — fall back to realistic
       const fetchType = type === 'studio' ? 'realistic' : type;
       const res = await fetch(`${API_URL}/api/voices/${fetchType}`);
       const data = await res.json();
@@ -1183,20 +1181,21 @@ export default function App() {
       </div>
 
       {/* ══ MAIN VIEW ══ */}
-      <Studio
-       API_URL={API_URL}
-      voices={voices}
-       modes={modes}
-       activeTab={activeTab}
-        translateOn={translateOn}
-        targetLang={targetLang}
-        presets={presets}         
-         onSaveToLibrary={saveToLibrary}
-         onTranslate={translateText}
-         triggerDownload={triggerDownload}
-         voiceLabel={voiceLabel}
-         prettyMode={prettyMode}
-             />>
+      {isStudio ? (
+        <Studio
+          API_URL={API_URL}
+          voices={voices}
+          modes={modes}
+          activeTab={activeTab}
+          translateOn={translateOn}
+          targetLang={targetLang}
+          presets={presets}
+          onSaveToLibrary={saveToLibrary}
+          onTranslate={translateText}
+          triggerDownload={triggerDownload}
+          voiceLabel={voiceLabel}
+          prettyMode={prettyMode}
+        />
       ) : (
         <>
           {/* ══ CHAT ══ */}
