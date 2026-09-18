@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import JSZip from 'jszip';
+import Studio from './Studio';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen.onrender.com';
 
@@ -166,9 +167,9 @@ function comboSummary(voices, voiceName, mode, translateOn, targetLang) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  INDEXEDDB — audio library
+//  INDEXEDDB — audio library (studio has its own store, bumps to v2)
 // ═══════════════════════════════════════════════════════════
-const DB_NAME = 'hyezen', DB_VERSION = 1, STORE = 'library';
+const DB_NAME = 'hyezen', DB_VERSION = 2, STORE = 'library';
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -177,6 +178,10 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE)) {
         const store = db.createObjectStore(STORE, { keyPath: 'id' });
         store.createIndex('createdAt', 'createdAt');
+      }
+      if (!db.objectStoreNames.contains('studio_projects')) {
+        const s = db.createObjectStore('studio_projects', { keyPath: 'id' });
+        s.createIndex('updatedAt', 'updatedAt');
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -267,29 +272,24 @@ export default function App() {
 
   const [voicePrompt, setVoicePrompt] = useState(null);
 
-  // Favorites
   const [favorites, setFavorites] = useState(() => LS.get('favorites', []));
   const longPressRef = useRef(null);
   const longPressFiredRef = useRef(false);
 
-  // Presets + popup control
   const [presets, setPresets] = useState(() => LS.get('presets', []));
   const [presetName, setPresetName] = useState('');
   const [presetPopupOn, setPresetPopupOn] = useState(() => LS.get('presetPopupOn', true));
   const [userTouched, setUserTouched] = useState(false);
   const [presetPrompt, setPresetPrompt] = useState(null);
-  // { voiceName, mode, translateOn, targetLang }
+  const lastPromptedKeyRef = useRef('');
 
-  // Library
   const [library, setLibrary] = useState([]);
   const [autoDownload, setAutoDownload] = useState(() => LS.get('autoDownload', false));
   const [renamingId, setRenamingId] = useState(null);
   const [renameDraft, setRenameDraft] = useState({ displayName: '', filename: '' });
 
-  // Name prompt (after generation)
   const [namePrompt, setNamePrompt] = useState(null);
 
-  // Batch
   const [batchText, setBatchText] = useState('');
   const [batchPrefix, setBatchPrefix] = useState('clip');
   const [batchRunning, setBatchRunning] = useState(false);
@@ -310,6 +310,7 @@ export default function App() {
     realistic:  { name: 'GOOD-REALISTIC TTS', sub: '150+ Premium voices' },
     fair:       { name: 'FAIR-FULL TTS',     sub: '78 Global voices' },
     robotic:    { name: 'BASIC-ROBOTIC',     sub: 'Male & Female robotic' },
+    studio:     { name: 'STUDIO',            sub: 'Multi-character scripts' },
   };
   const tabs = [
     { id: 'elevenlabs', name: 'Ultra' },
@@ -317,6 +318,7 @@ export default function App() {
     { id: 'realistic', name: 'Realistic' },
     { id: 'fair', name: 'Fair' },
     { id: 'robotic', name: 'Robotic' },
+    { id: 'studio', name: 'Studio' },
   ];
 
   // ── Boot ─────────────────────────────────────────────
@@ -355,9 +357,12 @@ export default function App() {
 
   useEffect(() => {
     if (!backendReady) return;
+    // Studio uses the same voice list but has its own UI; keep voices loaded for it too
     fetchVoices(activeTab);
     fetchModes();
-    setChat([{ type: 'bot', text: `Welcome to ${themes[activeTab].name}. Tap the VOICE pill above to pick a voice.` }]);
+    if (activeTab !== 'studio') {
+      setChat([{ type: 'bot', text: `Welcome to ${themes[activeTab].name}. Tap the VOICE pill above to pick a voice.` }]);
+    }
     setVoiceId('');
   }, [activeTab, backendReady]);
 
@@ -401,16 +406,19 @@ export default function App() {
   useEffect(() => { LS.set('autoDownload', autoDownload); }, [autoDownload]);
 
   // ── Preset popup trigger ─────────────────────────────
-  // Fires when voice AND mode are set, userTouched is true, popup on,
-  // and no modal is currently open. Debounced.
   useEffect(() => {
     if (!presetPopupOn) return;
     if (!userTouched) return;
     if (!voice || !selectedMode) return;
+    if (activeTab === 'studio') return; // Studio manages its own thing
     if (showVoiceModal || showModeModal || showTranslateModal || showMenuModal) return;
     if (voicePrompt || namePrompt || presetPrompt) return;
 
+    const signature = `${voice}|${selectedMode}|${translateOn ? targetLang : 'off'}`;
+    if (lastPromptedKeyRef.current === signature) return;
+
     const t = setTimeout(() => {
+      lastPromptedKeyRef.current = signature;
       setPresetPrompt({
         voiceName: voice,
         mode: selectedMode,
@@ -421,18 +429,19 @@ export default function App() {
     return () => clearTimeout(t);
   }, [
     voice, selectedMode, translateOn, targetLang,
-    presetPopupOn, userTouched,
+    presetPopupOn, userTouched, activeTab,
     showVoiceModal, showModeModal, showTranslateModal, showMenuModal,
     voicePrompt, namePrompt, presetPrompt,
   ]);
 
-  // ── Data fetch ───────────────────────────────────────
   async function fetchVoices(type) {
     try {
-      const res = await fetch(`${API_URL}/api/voices/${type}`);
+      // Studio doesn't have its own voice endpoint — fall back to realistic
+      const fetchType = type === 'studio' ? 'realistic' : type;
+      const res = await fetch(`${API_URL}/api/voices/${fetchType}`);
       const data = await res.json();
       setVoices(data);
-      if (data.length > 0) setVoice(data[0].name);
+      if (data.length > 0 && type !== 'studio') setVoice(data[0].name);
     } catch (err) { console.error('Fetch voices error:', err); }
   }
   async function fetchModes() {
@@ -440,11 +449,11 @@ export default function App() {
       const res = await fetch(`${API_URL}/api/modes`);
       const data = await res.json();
       setModes(data);
-      if (data.length > 0) setSelectedMode(data[0]);
+      if (data.length > 0 && activeTab !== 'studio') setSelectedMode(data[0]);
     } catch (err) { console.error('Fetch modes error:', err); }
   }
 
-  // ── Favorites — 3s long press ────────────────────────
+  // Favorites
   function beginLongPress(voiceName) {
     longPressFiredRef.current = false;
     if (longPressRef.current) clearTimeout(longPressRef.current);
@@ -464,7 +473,6 @@ export default function App() {
     setUserTouched(true);
   }
 
-  // ── Preview ──────────────────────────────────────────
   async function previewVoice(v) {
     setVoice(v);
     if (activeTab === 'robotic') {
@@ -480,7 +488,7 @@ export default function App() {
         const res = await fetch(`${API_URL}/api/tts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: 'Voice preview', voice: v, type: activeTab, speed: 1.0, mode: selectedMode }),
+          body: JSON.stringify({ text: 'Voice preview', voice: v, type: activeTab === 'studio' ? 'realistic' : activeTab, speed: 1.0, mode: selectedMode }),
         });
         const data = await res.json();
         if (data.url) new Audio(`${API_URL}${data.url}`).play().catch(() => {});
@@ -493,7 +501,6 @@ export default function App() {
     return synthVoices.find(v => /zira|susan|female/i.test(v.name)) || synthVoices[1] || synthVoices[0];
   }
 
-  // ── Download helper ──────────────────────────────────
   function triggerDownload(url, filename) {
     const a = document.createElement('a');
     a.href = url;
@@ -503,15 +510,10 @@ export default function App() {
     document.body.removeChild(a);
   }
   async function copyToClipboard(textToCopy) {
-    try {
-      await navigator.clipboard.writeText(textToCopy);
-      return true;
-    } catch {
-      return false;
-    }
+    try { await navigator.clipboard.writeText(textToCopy); return true; }
+    catch { return false; }
   }
 
-  // ── Generate audio ───────────────────────────────────
   async function generateAudio({ spokenText, useVoice }) {
     if (activeTab === 'elevenlabs') {
       const res = await fetch(`${API_URL}/api/elevenlabs/tts`, {
@@ -525,10 +527,11 @@ export default function App() {
       const blob = await (await fetch(fullUrl)).blob();
       return { url: fullUrl, blob };
     }
+    const type = activeTab === 'studio' ? 'realistic' : activeTab;
     const payload = {
       text: spokenText,
       voice: useVoice,
-      type: activeTab,
+      type,
       speed: 1.0,
       mode: selectedMode,
       characters: {},
@@ -546,7 +549,6 @@ export default function App() {
     return { url: fullUrl, blob };
   }
 
-  // ── Save audio to library ────────────────────────────
   async function saveToLibrary({ blob, displayName, filename, voiceName, mode, lang, duration }) {
     const id = (crypto.randomUUID && crypto.randomUUID()) || `id_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const item = {
@@ -595,7 +597,6 @@ export default function App() {
     await refreshLibrary();
   }
 
-  // ── Presets ──────────────────────────────────────────
   function makePreset(name) {
     return {
       id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -607,12 +608,16 @@ export default function App() {
       createdAt: Date.now(),
     };
   }
+  function stampCurrentCombo() {
+    lastPromptedKeyRef.current = `${voice}|${selectedMode}|${translateOn ? targetLang : 'off'}`;
+  }
   function savePresetManual() {
     const name = (presetName || '').trim();
     if (!name) return;
     const p = makePreset(name);
     setPresets(prev => [...prev, p]);
     setPresetName('');
+    stampCurrentCombo();
   }
   function savePresetFromPrompt(name) {
     const p = makePreset(name);
@@ -624,12 +629,13 @@ export default function App() {
     if (p.mode) setSelectedMode(p.mode);
     if (p.targetLang) setTargetLang(p.targetLang);
     setTranslateOn(!!p.translateOn);
+    const sig = `${p.voice || voice}|${p.mode || selectedMode}|${p.translateOn ? (p.targetLang || targetLang) : 'off'}`;
+    lastPromptedKeyRef.current = sig;
   }
   function deletePreset(id) {
     setPresets(prev => prev.filter(x => x.id !== id));
   }
 
-  // ── Core send flow ───────────────────────────────────
   async function sendText() {
     if (!text.trim() || loading) return;
     const currentText = text.trim();
@@ -657,6 +663,7 @@ export default function App() {
         didTranslate &&
         activeTab !== 'elevenlabs' &&
         activeTab !== 'robotic' &&
+        activeTab !== 'studio' &&
         suggested &&
         currentLocale !== targetLang;
 
@@ -703,7 +710,6 @@ export default function App() {
       const vLabel = voiceLabel(voices, useVoice);
       const defFilename = defaultFilename(vLabel, selectedMode, didTranslate ? targetLang : 'en');
 
-      // Push a single bubble with: translation info + audio + copy/toggle controls
       setChat(prev => [...prev, {
         type: 'bot',
         audio: blobUrl,
@@ -778,7 +784,6 @@ export default function App() {
     });
   }
 
-  // ── Batch ─────────────────────────────────────────────
   async function runBatch() {
     const lines = batchText.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
@@ -846,7 +851,6 @@ export default function App() {
   }
   function cancelBatch() { batchCancelRef.current = true; }
 
-  // ── Recording (ElevenLabs clone) ──────────────────────
   async function startRecording(e) {
     e.preventDefault();
     try {
@@ -904,7 +908,6 @@ export default function App() {
     });
   }
 
-  // ── Voice groups ─────────────────────────────────────
   function buildVoiceGroups() {
     if (activeTab === 'robotic' || activeTab === 'elevenlabs') return [{ continent: null, items: voices }];
     const favItems = voices.filter(v => favorites.includes(v.name));
@@ -945,6 +948,8 @@ export default function App() {
     return Object.entries(g).filter(([, arr]) => arr.length > 0);
   }
   const libraryGroups = groupLibraryByDate(library);
+
+  const isStudio = activeTab === 'studio';
 
   // ═══════════════════════════════════════════════════════
   //  LOADING SCREEN
@@ -1123,43 +1128,47 @@ export default function App() {
           <div className="hx-engine-name">{themes[activeTab].name}</div>
         </div>
 
-        <div className="hx-labels">
-          <span className="hx-label">VOICE</span>
-          <span className="hx-label">MODES</span>
-          <span className="hx-label">TRANSLATION</span>
-        </div>
-
-        <div className="hx-pills-row">
-          <div className="hx-seg hx-seg-voice-modes" />
-          {translateOn && <div className="hx-seg hx-seg-modes-translation" />}
-
-          <div className="hx-cell">
-            <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none">
-              <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
-            </svg>
-            <div className="hx-pill hx-pill-voice" onClick={() => { setShowVoiceModal(true); setUserTouched(true); }}>
-              {voiceLabel(voices, voice).toUpperCase()}
+        {!isStudio && (
+          <>
+            <div className="hx-labels">
+              <span className="hx-label">VOICE</span>
+              <span className="hx-label">MODES</span>
+              <span className="hx-label">TRANSLATION</span>
             </div>
-          </div>
 
-          <div className="hx-cell">
-            <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none">
-              <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
-            </svg>
-            <div className="hx-pill hx-pill-modes" onClick={() => { setShowModeModal(true); setUserTouched(true); }}>
-              {prettyMode(selectedMode)}
-            </div>
-          </div>
+            <div className="hx-pills-row">
+              <div className="hx-seg hx-seg-voice-modes" />
+              {translateOn && <div className="hx-seg hx-seg-modes-translation" />}
 
-          <div className="hx-cell">
-            <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none">
-              <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
-            </svg>
-            <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => { setShowTranslateModal(true); setUserTouched(true); }}>
-              {translateOn ? (LANG_META[targetLang]?.label.toUpperCase() || 'OFF') : 'OFF'}
+              <div className="hx-cell">
+                <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none">
+                  <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
+                </svg>
+                <div className="hx-pill hx-pill-voice" onClick={() => { setShowVoiceModal(true); setUserTouched(true); }}>
+                  {voiceLabel(voices, voice).toUpperCase()}
+                </div>
+              </div>
+
+              <div className="hx-cell">
+                <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none">
+                  <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
+                </svg>
+                <div className="hx-pill hx-pill-modes" onClick={() => { setShowModeModal(true); setUserTouched(true); }}>
+                  {prettyMode(selectedMode)}
+                </div>
+              </div>
+
+              <div className="hx-cell">
+                <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none">
+                  <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
+                </svg>
+                <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => { setShowTranslateModal(true); setUserTouched(true); }}>
+                  {translateOn ? (LANG_META[targetLang]?.label.toUpperCase() || 'OFF') : 'OFF'}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       {/* ══ NAV ══ */}
@@ -1173,76 +1182,95 @@ export default function App() {
         </div>
       </div>
 
-      {/* ══ CHAT ══ */}
-      <div onScroll={handleChatScroll} style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', background: '#0a0a0f' }}>
-        {chat.map((msg, i) => (
-          <ChatBubble key={i} msg={msg} onCopy={copyToClipboard} onDownload={triggerDownload} />
-        ))}
-        {loading && <div style={{ textAlign: 'center', color: '#888', fontSize: '12.5px', marginTop: '10px', letterSpacing: '0.05em' }}>Generating voice...</div>}
-        <div ref={chatEndRef} />
-      </div>
-
-      {/* ══ INPUT ══ */}
-      <div style={{ background: 'rgba(20,20,30,0.85)', backdropFilter: 'blur(20px)', padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        {activeTab === 'elevenlabs' && !voiceId ? (
-          <button
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onTouchStart={startRecording}
-            onTouchEnd={stopRecording}
-            onTouchCancel={stopRecording}
-            style={{
-              width: '100%', padding: '18px',
-              background: recording ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              border: 'none', borderRadius: '16px', color: '#fff',
-              fontSize: '15px', fontWeight: '700', cursor: 'pointer',
-              boxShadow: recording ? '0 0 40px rgba(245,87,108,0.8)' : '0 6px 20px rgba(102,126,234,0.5)',
-              transition: 'all 0.15s',
-              transform: recording ? 'scale(0.97)' : 'scale(1)',
-              userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
-            }}
-          >
-            {recording ? 'Recording — release to stop' : 'Hold to record 10s'}
-          </button>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {(activeTab === 'elevenlabs' && voiceId) || translateOn ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '4px', gap: '10px', flexWrap: 'wrap' }}>
-                {activeTab === 'elevenlabs' && voiceId && <span style={{ fontSize: '11.5px', color: '#0f0', letterSpacing: '0.03em' }}>Voice ready</span>}
-                {translateOn && (
-                  <span style={{ fontSize: '11.5px', color: '#3b82f6', letterSpacing: '0.03em' }}>
-                    Speaking in {LANG_META[targetLang]?.label}
-                  </span>
-                )}
-              </div>
-            ) : null}
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <input
-                value={text}
-                onChange={e => setText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendText()}
-                placeholder={activeTab === 'elevenlabs' && voiceId ? 'Type text to speak in your voice...' : 'Type text to generate voice...'}
-                style={{
-                  flex: 1, padding: '14px 16px',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '14px', color: '#fff', fontSize: '15px',
-                  outline: 'none', backdropFilter: 'blur(10px)',
-                }}
-              />
-              <button onClick={sendText} disabled={loading} style={{
-                padding: '14px 18px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                border: 'none', borderRadius: '14px', color: '#fff',
-                fontSize: '18px', cursor: loading ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 15px rgba(102,126,234,0.4)',
-                fontWeight: '700', opacity: loading ? 0.6 : 1,
-              }}>➤</button>
-            </div>
+      {/* ══ MAIN VIEW ══ */}
+      {isStudio ? (
+        <Studio
+          API_URL={API_URL}
+          voices={voices}
+          modes={modes}
+          activeTab={activeTab}
+          translateOn={translateOn}
+          targetLang={targetLang}
+          onSaveToLibrary={saveToLibrary}
+          onTranslate={translateText}
+          triggerDownload={triggerDownload}
+          voiceLabel={voiceLabel}
+          prettyMode={prettyMode}
+        />
+      ) : (
+        <>
+          {/* ══ CHAT ══ */}
+          <div onScroll={handleChatScroll} style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', background: '#0a0a0f' }}>
+            {chat.map((msg, i) => (
+              <ChatBubble key={i} msg={msg} onCopy={copyToClipboard} onDownload={triggerDownload} />
+            ))}
+            {loading && <div style={{ textAlign: 'center', color: '#888', fontSize: '12.5px', marginTop: '10px', letterSpacing: '0.05em' }}>Generating voice...</div>}
+            <div ref={chatEndRef} />
           </div>
-        )}
-      </div>
+
+          {/* ══ INPUT ══ */}
+          <div style={{ background: 'rgba(20,20,30,0.85)', backdropFilter: 'blur(20px)', padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            {activeTab === 'elevenlabs' && !voiceId ? (
+              <button
+                onMouseDown={startRecording}
+                onMouseUp={stopRecording}
+                onTouchStart={startRecording}
+                onTouchEnd={stopRecording}
+                onTouchCancel={stopRecording}
+                style={{
+                  width: '100%', padding: '18px',
+                  background: recording ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  border: 'none', borderRadius: '16px', color: '#fff',
+                  fontSize: '15px', fontWeight: '700', cursor: 'pointer',
+                  boxShadow: recording ? '0 0 40px rgba(245,87,108,0.8)' : '0 6px 20px rgba(102,126,234,0.5)',
+                  transition: 'all 0.15s',
+                  transform: recording ? 'scale(0.97)' : 'scale(1)',
+                  userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+                }}
+              >
+                {recording ? 'Recording — release to stop' : 'Hold to record 10s'}
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {(activeTab === 'elevenlabs' && voiceId) || translateOn ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '4px', gap: '10px', flexWrap: 'wrap' }}>
+                    {activeTab === 'elevenlabs' && voiceId && <span style={{ fontSize: '11.5px', color: '#0f0', letterSpacing: '0.03em' }}>Voice ready</span>}
+                    {translateOn && (
+                      <span style={{ fontSize: '11.5px', color: '#3b82f6', letterSpacing: '0.03em' }}>
+                        Speaking in {LANG_META[targetLang]?.label}
+                      </span>
+                    )}
+                  </div>
+                ) : null}
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && sendText()}
+                    placeholder={activeTab === 'elevenlabs' && voiceId ? 'Type text to speak in your voice...' : 'Type text to generate voice...'}
+                    style={{
+                      flex: 1, padding: '14px 16px',
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '14px', color: '#fff', fontSize: '15px',
+                      outline: 'none', backdropFilter: 'blur(10px)',
+                    }}
+                  />
+                  <button onClick={sendText} disabled={loading} style={{
+                    padding: '14px 18px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    border: 'none', borderRadius: '14px', color: '#fff',
+                    fontSize: '18px', cursor: loading ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 15px rgba(102,126,234,0.4)',
+                    fontWeight: '700', opacity: loading ? 0.6 : 1,
+                  }}>➤</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* ══ THREE-DOT MENU ══ */}
       {showMenuModal && (
@@ -1254,7 +1282,6 @@ export default function App() {
               <button className={menuTab === 'batch' ? 'active' : ''} onClick={() => setMenuTab('batch')}>Batch</button>
             </div>
 
-            {/* ── LIBRARY ── */}
             {menuTab === 'library' && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '10px', flexWrap: 'wrap' }}>
@@ -1311,7 +1338,6 @@ export default function App() {
               </>
             )}
 
-            {/* ── PRESETS ── */}
             {menuTab === 'presets' && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '10px', flexWrap: 'wrap' }}>
@@ -1356,7 +1382,6 @@ export default function App() {
               </>
             )}
 
-            {/* ── BATCH ── */}
             {menuTab === 'batch' && (
               <>
                 <p style={{ fontSize: '12px', color: '#8696a0', marginBottom: '14px' }}>
@@ -1560,7 +1585,7 @@ export default function App() {
           voices={voices}
           onSave={(name) => savePresetFromPrompt(name)}
           onNotNow={() => setPresetPrompt(null)}
-          onNever={() => { setPresetPopupOn(false); setPresetPrompt(null); }}
+          onNever={() => { setPresetPopupOn(false); setPresetPrompt(null); stampCurrentCombo(); }}
         />
       )}
     </div>
@@ -1568,18 +1593,15 @@ export default function App() {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  CHAT BUBBLE — handles original/translated toggle + copy
+//  CHAT BUBBLE
 // ═══════════════════════════════════════════════════════════
 function ChatBubble({ msg, onCopy, onDownload }) {
-  const [showTranslated, setShowTranslated] = useState(true); // for user bubble w/ translation
+  const [showTranslated, setShowTranslated] = useState(true);
   const [copied, setCopied] = useState(false);
 
   async function doCopy(txt) {
     const ok = await onCopy(txt);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }
+    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1500); }
   }
 
   if (msg.type === 'user') {
@@ -1592,7 +1614,6 @@ function ChatBubble({ msg, onCopy, onDownload }) {
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           fontSize: '15px', lineHeight: '1.45', whiteSpace: 'pre-wrap',
           boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-          position: 'relative',
         }}>
           <div>{msg.text}</div>
           <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '6px' }}>
@@ -1605,7 +1626,6 @@ function ChatBubble({ msg, onCopy, onDownload }) {
     );
   }
 
-  // Bot bubble
   const hasTranslation = !!(msg.originalText && msg.translatedText && msg.originalText !== msg.translatedText);
   const displayedText = hasTranslation
     ? (showTranslated ? msg.translatedText : msg.originalText)
@@ -1623,7 +1643,6 @@ function ChatBubble({ msg, onCopy, onDownload }) {
         boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
         border: '1px solid rgba(255,255,255,0.05)',
       }}>
-        {/* Text area (original / translated toggle) */}
         {displayedText && (
           <div style={{ marginBottom: msg.audio ? '10px' : '0' }}>
             {hasTranslation && (
@@ -1643,7 +1662,6 @@ function ChatBubble({ msg, onCopy, onDownload }) {
           </div>
         )}
 
-        {/* Audio */}
         {msg.audio && (
           <div>
             <audio controls src={msg.audio} style={{ width: '220px', borderRadius: '12px', marginBottom: '8px' }} />
@@ -1701,7 +1719,6 @@ function NamePromptModal({ prompt, onResolve }) {
 // ═══════════════════════════════════════════════════════════
 function PresetPromptModal({ prompt, voices, onSave, onNotNow, onNever }) {
   const [name, setName] = useState('');
-
   const summary = comboSummary(voices, prompt.voiceName, prompt.mode, prompt.translateOn, prompt.targetLang);
 
   return (
