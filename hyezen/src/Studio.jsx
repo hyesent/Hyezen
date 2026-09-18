@@ -113,12 +113,13 @@ export default function Studio({
   activeTab,
   translateOn,
   targetLang,
-  presets,          // ← new: App passes presets so studio can import them
+  presets,
   onSaveToLibrary,
   onTranslate,
   triggerDownload,
   voiceLabel,
   prettyMode,
+  t,
 }) {
   const [view, setView] = useState('home'); // 'home' | 'editor'
   const [projects, setProjects] = useState([]);
@@ -146,10 +147,8 @@ export default function Studio({
 
   const [previewing, setPreviewing] = useState(false);
 
-  // Rename-in-script prompt
-  const [renamePrompt, setRenamePrompt] = useState(null); // { oldName, newName }
-  // Preset picker per card
-  const [presetPickerFor, setPresetPickerFor] = useState(null); // cast name
+  const [renamePrompt, setRenamePrompt] = useState(null);
+  const [presetPickerFor, setPresetPickerFor] = useState(null);
 
   // ── Load project list on mount ──
   const refreshProjects = useCallback(async () => {
@@ -163,10 +162,10 @@ export default function Studio({
 
   useEffect(() => { refreshProjects(); }, [refreshProjects]);
 
-  // ── Auto-save current project (5s debounce) when in editor ──
+  // ── Auto-save current project (5s debounce) ──
   useEffect(() => {
     if (view !== 'editor' || !projectId) return;
-    const t = setTimeout(() => {
+    const tmr = setTimeout(() => {
       projSave({
         id: projectId,
         name: projectName || 'Untitled',
@@ -175,7 +174,7 @@ export default function Studio({
         updatedAt: Date.now(),
       }).then(refreshProjects).catch(e => console.error('proj save', e));
     }, 5000);
-    return () => clearTimeout(t);
+    return () => clearTimeout(tmr);
   }, [view, projectId, projectName, script, cast, refreshProjects]);
 
   // ── Auto-cast prompt ──
@@ -204,7 +203,7 @@ export default function Studio({
     const id = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const project = {
       id,
-      name: name || 'Untitled Story',
+      name: name || t.untitled || 'Untitled Story',
       script: '',
       cast: [],
       updatedAt: Date.now(),
@@ -219,7 +218,7 @@ export default function Studio({
 
   function openProject(p) {
     setProjectId(p.id);
-    setProjectName(p.name || 'Untitled');
+    setProjectName(p.name || (t.untitled || 'Untitled'));
     setScript(p.script || '');
     setCast(Array.isArray(p.cast) ? p.cast : []);
     setResults([]);
@@ -233,11 +232,10 @@ export default function Studio({
   }
 
   function exitToHome() {
-    // save immediately
     if (projectId) {
       projSave({
         id: projectId,
-        name: projectName || 'Untitled',
+        name: projectName || (t.untitled || 'Untitled'),
         script,
         cast,
         updatedAt: Date.now(),
@@ -271,11 +269,10 @@ export default function Studio({
     const clean = newName.trim();
     if (!clean || clean === oldName) return;
     if (cast.some(c => c.name === clean)) {
-      alert(`"${clean}" already exists in the cast.`);
+      alert(interpolate(t.errorDuplicateName, { name: clean }));
       return;
     }
     setCast(prev => prev.map(c => c.name === oldName ? { ...c, name: clean } : c));
-    // ask to rename in script
     const usedInScript = parseScript(script).some(b => b.speaker === oldName);
     if (usedInScript) {
       setRenamePrompt({ oldName, newName: clean });
@@ -338,7 +335,7 @@ export default function Studio({
     } catch (e) { console.warn('preview failed:', e.message); }
   }
 
-  // ── Preview whole cast (sequential) ──
+  // ── Preview whole cast ──
   async function previewCast() {
     if (previewing || cast.length === 0) return;
     setPreviewing(true);
@@ -381,7 +378,7 @@ export default function Studio({
       return !c || !c.voice;
     });
     if (missingVoice) {
-      alert(`No voice assigned for "${missingVoice.speaker}".`);
+      alert(interpolate(t.errorNoVoice, { name: missingVoice.speaker }));
       return;
     }
 
@@ -403,8 +400,8 @@ export default function Studio({
       let spokenText = b.text;
       if (translateOn && targetLang !== 'en' && onTranslate) {
         try {
-          const t = await onTranslate(b.text, targetLang, 'en');
-          if (t && t !== b.text) spokenText = t;
+          const tr = await onTranslate(b.text, targetLang, 'en');
+          if (tr && tr !== b.text) spokenText = tr;
         } catch {}
       }
 
@@ -482,31 +479,31 @@ export default function Studio({
         <StudioStyles />
         <div className="st-home">
           <div className="st-home-head">
-            <div className="st-home-title">Your Stories</div>
+            <div className="st-home-title">{t.yourStories}</div>
             <button className="st-btn primary" onClick={() => { setNewStoryName(''); setShowNewStory(true); }}>
-              + New Story
+              + {t.newStory}
             </button>
           </div>
 
           {loadingProjects ? (
-            <div className="st-empty">Loading stories…</div>
+            <div className="st-empty">{t.loadingStories}</div>
           ) : projects.length === 0 ? (
             <div className="st-empty">
-              No stories yet.<br />
-              Tap <strong>+ New Story</strong> to start writing a multi-character script.
+              {t.noStoriesYet}<br />
+              {t.noStoriesYetLine2}
             </div>
           ) : (
             <div className="st-home-list">
               {projects.map(p => (
                 <div key={p.id} className="st-home-row">
                   <div className="st-home-row-info" onClick={() => openProject(p)}>
-                    <div className="st-home-row-name">{p.name || 'Untitled'}</div>
+                    <div className="st-home-row-name">{p.name || (t.untitled || 'Untitled')}</div>
                     <div className="st-home-row-meta">
-                      {(p.cast?.length || 0)} cast · {new Date(p.updatedAt || Date.now()).toLocaleDateString()}
+                      {interpolate(t.castCount, { n: p.cast?.length || 0 })} · {new Date(p.updatedAt || Date.now()).toLocaleDateString()}
                     </div>
                   </div>
-                  <button className="st-icon-btn" onClick={() => openProject(p)}>Open</button>
-                  <button className="st-icon-btn danger" onClick={() => deleteProject(p.id)}>Del</button>
+                  <button className="st-icon-btn" onClick={() => openProject(p)}>{t.open}</button>
+                  <button className="st-icon-btn danger" onClick={() => deleteProject(p.id)}>{t.delete}</button>
                 </div>
               ))}
             </div>
@@ -516,13 +513,13 @@ export default function Studio({
         {showNewStory && (
           <div className="st-modal-backdrop" onClick={() => setShowNewStory(false)}>
             <div className="st-modal" onClick={e => e.stopPropagation()}>
-              <h3>New story</h3>
-              <p>Name your story. You can rename it later.</p>
+              <h3>{t.newStory}</h3>
+              <p>{t.nameYourStory}</p>
               <input
                 className="st-input"
                 value={newStoryName}
                 onChange={e => setNewStoryName(e.target.value)}
-                placeholder="e.g. Tangled Opening"
+                placeholder={t.storyNamePlaceholder}
                 autoFocus
                 onKeyDown={e => e.key === 'Enter' && newStoryName.trim() && createProject(newStoryName.trim())}
               />
@@ -533,9 +530,9 @@ export default function Studio({
                   style={{ opacity: newStoryName.trim() ? 1 : 0.5 }}
                   onClick={() => createProject(newStoryName.trim())}
                 >
-                  Create
+                  {t.create}
                 </button>
-                <button className="st-btn" onClick={() => setShowNewStory(false)}>Cancel</button>
+                <button className="st-btn" onClick={() => setShowNewStory(false)}>{t.cancel}</button>
               </div>
             </div>
           </div>
@@ -549,7 +546,6 @@ export default function Studio({
   // ═══════════════════════════════════════════════════════════
   const totalChars = script.length;
   const totalLines = blocks.length;
-  const busy = generating;
 
   return (
     <div className="st-root">
@@ -557,17 +553,17 @@ export default function Studio({
 
       {/* Top strip */}
       <div className="st-topstrip">
-        <button className="st-back-btn" onClick={exitToHome} title="Back to stories">‹</button>
+        <button className="st-back-btn" onClick={exitToHome} title={t.back}>‹</button>
         <input
           className="st-title-input"
           value={projectName}
           onChange={e => setProjectName(e.target.value)}
-          placeholder="Untitled Story"
+          placeholder={t.untitled || 'Untitled Story'}
         />
         <div className="st-stats">
-          <span><strong>{cast.length}</strong> cast</span>
-          <span><strong>{totalLines}</strong> blocks</span>
-          <span><strong>{totalChars}</strong> chars</span>
+          <span><strong>{cast.length}</strong> {t.cast.toLowerCase()}</span>
+          <span><strong>{totalLines}</strong> {t.blocks}</span>
+          <span><strong>{totalChars}</strong> {t.chars}</span>
           {translateOn && (
             <span style={{ color: '#3b82f6' }}><strong>→</strong> {targetLang.toUpperCase()}</span>
           )}
@@ -578,7 +574,7 @@ export default function Studio({
       <div className="st-main">
         {/* Script */}
         <div className="st-panel st-panel-script">
-          <div className="st-panel-title">Script</div>
+          <div className="st-panel-title">{t.script}</div>
           <textarea
             className="st-script"
             value={script}
@@ -587,18 +583,18 @@ export default function Studio({
             spellCheck={false}
           />
           <div className="st-hint">
-            Start a line with <code>Name:</code> to switch speaker. Lines without a prefix continue the current speaker.
+            {t.scriptHint}
           </div>
         </div>
 
         {/* Cast */}
         <div className="st-panel st-panel-cast">
-          <div className="st-panel-title">Cast ({cast.length})</div>
+          <div className="st-panel-title">{t.cast} ({cast.length})</div>
 
           {cast.length === 0 ? (
             <div className="st-empty">
-              No characters yet.<br />
-              Write a script with <code style={{ color: '#8696a0' }}>Name:</code> prefixes, or add one manually.
+              {t.castEmptyLine1}<br />
+              {t.castEmptyLine2}
             </div>
           ) : (
             <div className="st-cast-list">
@@ -610,7 +606,6 @@ export default function Studio({
                       className="st-cast-name-input"
                       value={c.name}
                       onChange={e => {
-                        // update only locally as they type
                         setCast(prev => prev.map(x => x === c ? { ...x, name: e.target.value } : x));
                       }}
                       onBlur={e => {
@@ -619,19 +614,19 @@ export default function Studio({
                           renameCastMember(c.name, newName);
                         }
                       }}
-                      placeholder="Character name"
+                      placeholder={t.characterName}
                     />
-                    <button className="st-cast-remove" onClick={() => removeCast(c.name)} title="Remove">×</button>
+                    <button className="st-cast-remove" onClick={() => removeCast(c.name)} title={t.delete}>×</button>
                   </div>
 
                   <div className="st-cast-field">
-                    <span className="st-cast-label">Voice</span>
+                    <span className="st-cast-label">{t.voice}</span>
                     <select
                       className="st-cast-select"
                       value={c.voice}
                       onChange={e => updateCast(c.name, 'voice', e.target.value)}
                     >
-                      {voices.length === 0 && <option value="">No voices</option>}
+                      {voices.length === 0 && <option value="">—</option>}
                       {voices.map(v => (
                         <option key={v.name} value={v.name}>{v.label}</option>
                       ))}
@@ -639,7 +634,7 @@ export default function Studio({
                   </div>
 
                   <div className="st-cast-field">
-                    <span className="st-cast-label">Mode</span>
+                    <span className="st-cast-label">{t.modes.replace(/S$/, '')}</span>
                     <select
                       className="st-cast-select"
                       value={c.mode}
@@ -653,7 +648,7 @@ export default function Studio({
                   </div>
 
                   <div className="st-cast-field">
-                    <span className="st-cast-label">Speed</span>
+                    <span className="st-cast-label">{t.speed}</span>
                     <div className="st-cast-speed">
                       <input
                         type="range"
@@ -668,9 +663,9 @@ export default function Studio({
                   </div>
 
                   <div className="st-cast-actions">
-                    <button className="st-cast-mini-btn" onClick={() => previewOneVoice(c.name)}>Preview</button>
+                    <button className="st-cast-mini-btn" onClick={() => previewOneVoice(c.name)}>{t.preview}</button>
                     {presets && presets.length > 0 && (
-                      <button className="st-cast-mini-btn" onClick={() => setPresetPickerFor(c.name)}>Presets</button>
+                      <button className="st-cast-mini-btn" onClick={() => setPresetPickerFor(c.name)}>{t.presets}</button>
                     )}
                   </div>
                 </div>
@@ -678,14 +673,14 @@ export default function Studio({
             </div>
           )}
 
-          <button className="st-add-btn" onClick={addBlankCast}>+ Add character</button>
+          <button className="st-add-btn" onClick={addBlankCast}>{t.addCharacter}</button>
         </div>
       </div>
 
       {/* Actions bar */}
       <div className="st-actions">
         <button className="st-btn" onClick={previewCast} disabled={previewing || generating || cast.length === 0}>
-          {previewing ? 'Previewing…' : 'Preview cast'}
+          {previewing ? t.previewing : t.previewCast}
         </button>
 
         {!generating && results.length === 0 && (
@@ -694,7 +689,7 @@ export default function Studio({
             onClick={generateAll}
             disabled={blocks.length === 0 || missingSpeakers.length > 0}
           >
-            Generate all
+            {t.generateAll}
           </button>
         )}
 
@@ -702,24 +697,24 @@ export default function Studio({
           <>
             <div className="st-progress">
               <div className="st-progress-text">
-                Generating {progress.done} / {progress.total}
+                {interpolate(t.generatingProgress, { done: progress.done, total: progress.total })}
                 {progress.current ? ` · ${progress.current}` : ''}
               </div>
               <div className="st-progress-bar">
                 <div className="st-progress-fill" style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
               </div>
             </div>
-            <button className="st-btn danger" onClick={cancelGeneration}>Cancel</button>
+            <button className="st-btn danger" onClick={cancelGeneration}>{t.cancel}</button>
           </>
         )}
 
         {!generating && results.length > 0 && (
           <>
             <div className="st-progress" style={{ color: '#00a884', fontSize: 11, letterSpacing: '0.05em' }}>
-              {results.filter(r => r.blob).length} / {results.length} clips generated · saved to library
+              {interpolate(t.clipsGenerated, { done: results.filter(r => r.blob).length, total: results.length })}
             </div>
-            <button className="st-btn primary" onClick={downloadZip}>Download ZIP</button>
-            <button className="st-btn" onClick={clearResults}>Clear</button>
+            <button className="st-btn primary" onClick={downloadZip}>{t.downloadZip}</button>
+            <button className="st-btn" onClick={clearResults}>{t.clear}</button>
           </>
         )}
       </div>
@@ -728,9 +723,12 @@ export default function Studio({
       {castPrompt && (
         <div className="st-modal-backdrop" onClick={() => setCastPrompt(null)}>
           <div className="st-modal" onClick={e => e.stopPropagation()}>
-            <h3>New characters found</h3>
+            <h3>{t.newCharactersFound}</h3>
             <p>
-              {castPrompt.names.length} {castPrompt.names.length === 1 ? 'name' : 'names'} in your script {castPrompt.names.length === 1 ? 'is' : 'are'} not in the cast yet:
+              {castPrompt.names.length === 1
+                ? interpolate(t.newCharactersBody, { n: castPrompt.names.length })
+                : interpolate(t.newCharactersBodyPlural, { n: castPrompt.names.length })
+              }
             </p>
             <div className="st-char-list">
               {castPrompt.names.map(n => {
@@ -762,7 +760,7 @@ export default function Studio({
                 }}
                 disabled={castPrompt.picked.size === 0}
               >
-                Add {castPrompt.picked.size}
+                {interpolate(t.add, { n: castPrompt.picked.size })}
               </button>
               <button
                 className="st-btn"
@@ -771,9 +769,9 @@ export default function Studio({
                   setCastPrompt(null);
                 }}
               >
-                Add all
+                {t.addAll}
               </button>
-              <button className="st-btn" onClick={() => setCastPrompt(null)}>Ignore</button>
+              <button className="st-btn" onClick={() => setCastPrompt(null)}>{t.ignore}</button>
             </div>
           </div>
         </div>
@@ -783,14 +781,13 @@ export default function Studio({
       {renamePrompt && (
         <div className="st-modal-backdrop" onClick={() => setRenamePrompt(null)}>
           <div className="st-modal" onClick={e => e.stopPropagation()}>
-            <h3>Rename in script?</h3>
+            <h3>{t.renameInScript}</h3>
             <p>
-              You renamed <strong>{renamePrompt.oldName}</strong> to <strong>{renamePrompt.newName}</strong>.<br /><br />
-              Update the script's <code>{renamePrompt.oldName}:</code> prefixes too?
+              {interpolate(t.renameInScriptBody, { old: renamePrompt.oldName, new: renamePrompt.newName })}
             </p>
             <div className="st-modal-actions">
-              <button className="st-btn primary" onClick={applyRenameInScript}>Update script</button>
-              <button className="st-btn" onClick={() => setRenamePrompt(null)}>Just the cast</button>
+              <button className="st-btn primary" onClick={applyRenameInScript}>{t.updateScript}</button>
+              <button className="st-btn" onClick={() => setRenamePrompt(null)}>{t.justTheCast}</button>
             </div>
           </div>
         </div>
@@ -800,7 +797,7 @@ export default function Studio({
       {presetPickerFor && (
         <div className="st-modal-backdrop" onClick={() => setPresetPickerFor(null)}>
           <div className="st-modal" onClick={e => e.stopPropagation()}>
-            <h3>Apply preset to {presetPickerFor}</h3>
+            <h3>{interpolate(t.applyPresetTo, { name: presetPickerFor })}</h3>
             <div className="st-preset-list">
               {presets.map(p => (
                 <button
@@ -810,19 +807,25 @@ export default function Studio({
                 >
                   <div className="st-preset-item-name">{p.name}</div>
                   <div className="st-preset-item-meta">
-                    {voiceLabel(voices, p.voice)} · {prettyMode(p.mode)} · {p.translateOn ? (p.targetLang || 'off') : 'no translation'}
+                    {voiceLabel(voices, p.voice)} · {prettyMode(p.mode)} · {p.translateOn ? (p.targetLang || t.off) : t.noTranslation}
                   </div>
                 </button>
               ))}
             </div>
             <div className="st-modal-actions">
-              <button className="st-btn" onClick={() => setPresetPickerFor(null)}>Cancel</button>
+              <button className="st-btn" onClick={() => setPresetPickerFor(null)}>{t.cancel}</button>
             </div>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+// Small helper — inline interpolate so Studio doesn't need to import from i18n
+function interpolate(template, vars = {}) {
+  if (!template) return '';
+  return template.replace(/\{(\w+)\}/g, (_, k) => (vars[k] != null ? String(vars[k]) : `{${k}}`));
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1102,7 +1105,7 @@ function StudioStyles() {
       .st-preset-item-name { font-size: 13px; font-weight: 700; }
       .st-preset-item-meta { font-size: 10.5px; color: #8696a0; margin-top: 3px; }
 
-      /* ═══ MOBILE — stack, fixed heights, no overlap ═══ */
+      /* ═══ MOBILE ═══ */
       @media (max-width: 800px) {
         .st-main {
           grid-template-columns: 1fr;
