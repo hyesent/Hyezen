@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import JSZip from 'jszip';
 import Studio from './Studio';
+import Lab from './Lab';
 import { getStrings, detectInitialLang, interpolate, SUPPORTED_LANGS, STRINGS } from './i18n';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen.onrender.com';
@@ -240,7 +241,7 @@ const LS = {
 };
 
 // ═══════════════════════════════════════════════════════════
-//  LANGUAGE PICKER (first launch)
+//  LANGUAGE PICKER
 // ═══════════════════════════════════════════════════════════
 function LangPicker({ onPick }) {
   const browserLang = useMemo(() => {
@@ -279,8 +280,7 @@ function LangPicker({ onPick }) {
         .lp-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
-          gap: 8px;
-          max-width: 480px; width: 100%;
+          gap: 8px; max-width: 480px; width: 100%;
           margin-bottom: 24px;
         }
         @media (min-width: 640px) {
@@ -291,19 +291,12 @@ function LangPicker({ onPick }) {
           background: #1e2830;
           border: 1.2px solid rgba(255,255,255,0.06);
           border-radius: 999px;
-          color: #e9edef;
-          font-size: 13px; font-weight: 600;
-          letter-spacing: 0.02em;
-          cursor: pointer;
-          text-align: center;
-          transition: all 0.18s;
+          color: #e9edef; font-size: 13px; font-weight: 600;
+          letter-spacing: 0.02em; cursor: pointer;
+          text-align: center; transition: all 0.18s;
           font-family: inherit;
         }
-        .lp-pill:hover {
-          background: #2a3942;
-          border-color: rgba(0,168,132,0.4);
-          transform: translateY(-1px);
-        }
+        .lp-pill:hover { background: #2a3942; border-color: rgba(0,168,132,0.4); transform: translateY(-1px); }
         .lp-pill:active { transform: translateY(0) scale(0.98); }
         .lp-skip {
           background: transparent; border: none;
@@ -317,7 +310,6 @@ function LangPicker({ onPick }) {
 
       <div className="lp-logo">H Y E Z E N</div>
       <div className="lp-heading">{s.chooseYourLanguage || 'Choose your language'}</div>
-
       <div className="lp-grid">
         {SUPPORTED_LANGS.map(l => (
           <button key={l.code} className="lp-pill" onClick={() => onPick(l.code)}>
@@ -325,7 +317,6 @@ function LangPicker({ onPick }) {
           </button>
         ))}
       </div>
-
       <button className="lp-skip" onClick={() => onPick('en')}>
         {s.continueInEnglish || 'Continue in English'}
       </button>
@@ -340,11 +331,9 @@ export default function App() {
   const [backendReady, setBackendReady] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('Starting HYEZEN...');
 
-  // UI language
   const [uiLang, setUiLang] = useState(() => {
     try { return localStorage.getItem('hx_ui_lang') || null; } catch { return null; }
   });
-
   const t = useMemo(() => (uiLang ? getStrings(uiLang) : STRINGS.en), [uiLang]);
 
   function pickUiLang(code) {
@@ -407,6 +396,11 @@ export default function App() {
   const [navVisible, setNavVisible] = useState(true);
   const navTimer = useRef(null);
 
+  // Lab — visible once user types "open lab"
+  const [labVisible, setLabVisible] = useState(() => {
+    try { return localStorage.getItem('hx_lab_visible') === '1'; } catch { return false; }
+  });
+
   const mediaRecorder = useRef(null);
   const chunks = useRef([]);
   const chatEndRef = useRef(null);
@@ -418,15 +412,21 @@ export default function App() {
     fair:       { name: 'FAIR-FULL TTS',     sub: '78 Global voices' },
     robotic:    { name: 'BASIC-ROBOTIC',     sub: 'Male & Female robotic' },
     studio:     { name: 'STUDIO',            sub: 'Multi-character scripts' },
+    lab:        { name: 'LAB',               sub: 'Experimental controls' },
   };
-  const tabs = [
-    { id: 'elevenlabs', name: 'Ultra' },
-    { id: 'xtts', name: 'XTTS' },
-    { id: 'realistic', name: 'Realistic' },
-    { id: 'fair', name: 'Fair' },
-    { id: 'robotic', name: 'Robotic' },
-    { id: 'studio', name: 'Studio' },
-  ];
+
+  const tabs = useMemo(() => {
+    const list = [
+      { id: 'elevenlabs', name: 'Ultra' },
+      { id: 'xtts', name: 'XTTS' },
+      { id: 'realistic', name: 'Realistic' },
+      { id: 'fair', name: 'Fair' },
+      { id: 'robotic', name: 'Robotic' },
+      { id: 'studio', name: 'Studio' },
+    ];
+    if (labVisible) list.push({ id: 'lab', name: 'Lab' });
+    return list;
+  }, [labVisible]);
 
   // ── Boot ──
   useEffect(() => { wakeBackend(); }, []);
@@ -464,10 +464,10 @@ export default function App() {
 
   useEffect(() => {
     if (!backendReady) return;
-    if (!uiLang) return; // wait until language is picked
+    if (!uiLang) return;
     fetchVoices(activeTab);
     fetchModes();
-    if (activeTab !== 'studio') {
+    if (activeTab !== 'studio' && activeTab !== 'lab') {
       setChat([{ type: 'bot', text: interpolate(t.welcomeTo, { engine: themes[activeTab].name }) }]);
     }
     setVoiceId('');
@@ -517,7 +517,7 @@ export default function App() {
     if (!presetPopupOn) return;
     if (!userTouched) return;
     if (!voice || !selectedMode) return;
-    if (activeTab === 'studio') return;
+    if (activeTab === 'studio' || activeTab === 'lab') return;
     if (showVoiceModal || showModeModal || showTranslateModal || showMenuModal) return;
     if (voicePrompt || namePrompt || presetPrompt) return;
 
@@ -526,12 +526,7 @@ export default function App() {
 
     const tmr = setTimeout(() => {
       lastPromptedKeyRef.current = signature;
-      setPresetPrompt({
-        voiceName: voice,
-        mode: selectedMode,
-        translateOn,
-        targetLang,
-      });
+      setPresetPrompt({ voiceName: voice, mode: selectedMode, translateOn, targetLang });
     }, 350);
     return () => clearTimeout(tmr);
   }, [
@@ -543,11 +538,11 @@ export default function App() {
 
   async function fetchVoices(type) {
     try {
-      const fetchType = type === 'studio' ? 'realistic' : type;
+      const fetchType = (type === 'studio' || type === 'lab') ? 'realistic' : type;
       const res = await fetch(`${API_URL}/api/voices/${fetchType}`);
       const data = await res.json();
       setVoices(data);
-      if (data.length > 0 && type !== 'studio') setVoice(data[0].name);
+      if (data.length > 0 && type !== 'studio' && type !== 'lab') setVoice(data[0].name);
     } catch (err) { console.error('Fetch voices error:', err); }
   }
   async function fetchModes() {
@@ -555,7 +550,7 @@ export default function App() {
       const res = await fetch(`${API_URL}/api/modes`);
       const data = await res.json();
       setModes(data);
-      if (data.length > 0 && activeTab !== 'studio') setSelectedMode(data[0]);
+      if (data.length > 0 && activeTab !== 'studio' && activeTab !== 'lab') setSelectedMode(data[0]);
     } catch (err) { console.error('Fetch modes error:', err); }
   }
 
@@ -593,7 +588,7 @@ export default function App() {
         const res = await fetch(`${API_URL}/api/tts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: 'Voice preview', voice: v, type: activeTab === 'studio' ? 'realistic' : activeTab, speed: 1.0, mode: selectedMode }),
+          body: JSON.stringify({ text: 'Voice preview', voice: v, type: activeTab === 'studio' || activeTab === 'lab' ? 'realistic' : activeTab, speed: 1.0, mode: selectedMode }),
         });
         const data = await res.json();
         if (data.url) new Audio(`${API_URL}${data.url}`).play().catch(() => {});
@@ -632,7 +627,7 @@ export default function App() {
       const blob = await (await fetch(fullUrl)).blob();
       return { url: fullUrl, blob };
     }
-    const type = activeTab === 'studio' ? 'realistic' : activeTab;
+    const type = (activeTab === 'studio' || activeTab === 'lab') ? 'realistic' : activeTab;
     const payload = {
       text: spokenText,
       voice: useVoice,
@@ -706,11 +701,7 @@ export default function App() {
     return {
       id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name: (name || '').trim() || comboSummary(voices, voice, selectedMode, translateOn, targetLang),
-      voice,
-      mode: selectedMode,
-      targetLang,
-      translateOn,
-      createdAt: Date.now(),
+      voice, mode: selectedMode, targetLang, translateOn, createdAt: Date.now(),
     };
   }
   function stampCurrentCombo() {
@@ -719,14 +710,12 @@ export default function App() {
   function savePresetManual() {
     const name = (presetName || '').trim();
     if (!name) return;
-    const p = makePreset(name);
-    setPresets(prev => [...prev, p]);
+    setPresets(prev => [...prev, makePreset(name)]);
     setPresetName('');
     stampCurrentCombo();
   }
   function savePresetFromPrompt(name) {
-    const p = makePreset(name);
-    setPresets(prev => [...prev, p]);
+    setPresets(prev => [...prev, makePreset(name)]);
     setPresetPrompt(null);
   }
   function applyPreset(p) {
@@ -734,16 +723,29 @@ export default function App() {
     if (p.mode) setSelectedMode(p.mode);
     if (p.targetLang) setTargetLang(p.targetLang);
     setTranslateOn(!!p.translateOn);
-    const sig = `${p.voice || voice}|${p.mode || selectedMode}|${p.translateOn ? (p.targetLang || targetLang) : 'off'}`;
-    lastPromptedKeyRef.current = sig;
+    lastPromptedKeyRef.current = `${p.voice || voice}|${p.mode || selectedMode}|${p.translateOn ? (p.targetLang || targetLang) : 'off'}`;
   }
-  function deletePreset(id) {
-    setPresets(prev => prev.filter(x => x.id !== id));
+  function deletePreset(id) { setPresets(prev => prev.filter(x => x.id !== id)); }
+
+  // ⭐ open lab interception
+  function handleLabTrigger(input) {
+    if (input.trim().toLowerCase() === 'open lab') {
+      try { localStorage.setItem('hx_lab_visible', '1'); } catch {}
+      setLabVisible(true);
+      setActiveTab('lab');
+      setText('');
+      return true;
+    }
+    return false;
   }
 
   async function sendText() {
     if (!text.trim() || loading) return;
     const currentText = text.trim();
+
+    // Intercept "open lab" before anything else
+    if (handleLabTrigger(currentText)) return;
+
     setText('');
     setChat(prev => [...prev, { type: 'user', text: currentText }]);
     setLoading(true);
@@ -755,10 +757,7 @@ export default function App() {
       if (translateOn && targetLang !== 'en') {
         try {
           const translated = await translateText(currentText, targetLang, 'en');
-          if (translated && translated !== currentText) {
-            spokenText = translated;
-            didTranslate = true;
-          }
+          if (translated && translated !== currentText) { spokenText = translated; didTranslate = true; }
         } catch (e) { console.warn('translate failed:', e.message); }
       }
 
@@ -769,6 +768,7 @@ export default function App() {
         activeTab !== 'elevenlabs' &&
         activeTab !== 'robotic' &&
         activeTab !== 'studio' &&
+        activeTab !== 'lab' &&
         suggested &&
         currentLocale !== targetLang;
 
@@ -869,18 +869,15 @@ export default function App() {
     if (!voicePrompt) return;
     const p = voicePrompt;
     setVoicePrompt(null);
-
     if (action === 'cancel') {
       setChat(prev => [...prev, { type: 'bot', text: t.cancelled }]);
       return;
     }
-
     let useVoice = p.currentVoiceName;
     if (action === 'suggested') {
       useVoice = p.suggestedVoiceName;
       setVoice(p.suggestedVoiceName);
     }
-
     await finalizeTTS({
       originalText: p.originalText,
       spokenText: p.translatedText,
@@ -922,15 +919,7 @@ export default function App() {
         } else {
           const filename = sanitizeFilename(`${batchPrefix}_${String(i + 1).padStart(3, '0')}.mp3`);
           const displayName = `${batchPrefix} ${i + 1}`;
-          await saveToLibrary({
-            blob: result.blob,
-            displayName,
-            filename,
-            voiceName: batchVoice,
-            mode: batchMode,
-            lang: didTranslate ? batchLang : 'en',
-            duration: 0,
-          });
+          await saveToLibrary({ blob: result.blob, displayName, filename, voiceName: batchVoice, mode: batchMode, lang: didTranslate ? batchLang : 'en', duration: 0 });
           results.push({ blob: result.blob, filename, spokenText });
         }
       } catch (e) {
@@ -948,10 +937,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       triggerDownload(url, `hyezen_batch_${Date.now()}.zip`);
       setTimeout(() => URL.revokeObjectURL(url), 8000);
-      setChat(prev => [...prev, {
-        type: 'bot',
-        text: interpolate(t.batchComplete, { done: successful.length, total: lines.length }),
-      }]);
+      setChat(prev => [...prev, { type: 'bot', text: interpolate(t.batchComplete, { done: successful.length, total: lines.length }) }]);
     }
   }
   function cancelBatch() { batchCancelRef.current = true; }
@@ -1055,6 +1041,8 @@ export default function App() {
   const libraryGroups = groupLibraryByDate(library);
 
   const isStudio = activeTab === 'studio';
+  const isLab = activeTab === 'lab';
+  const hideHeaderPills = isStudio || isLab;
 
   // ═══════════════════════════════════════════════════════
   //  LOADING SCREEN
@@ -1094,9 +1082,6 @@ export default function App() {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  //  FIRST-LAUNCH LANGUAGE PICKER
-  // ═══════════════════════════════════════════════════════
   if (!uiLang) {
     return <LangPicker onPick={pickUiLang} />;
   }
@@ -1242,10 +1227,10 @@ export default function App() {
             <span /><span /><span />
           </div>
           <div className="hx-logo">H Y E Z E N</div>
-          <div className="hx-engine-name">{themes[activeTab].name}</div>
+          <div className="hx-engine-name">{themes[activeTab]?.name || ''}</div>
         </div>
 
-        {!isStudio && (
+        {!hideHeaderPills && (
           <>
             <div className="hx-labels">
               <span className="hx-label">{t.voice}</span>
@@ -1316,9 +1301,15 @@ export default function App() {
           prettyMode={prettyMode}
           t={t}
         />
+      ) : isLab ? (
+        <Lab
+          API_URL={API_URL}
+          voices={voices}
+          modes={modes}
+          triggerDownload={triggerDownload}
+        />
       ) : (
         <>
-          {/* Chat */}
           <div onScroll={handleChatScroll} style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', background: '#0a0a0f' }}>
             {chat.map((msg, i) => (
               <ChatBubble key={i} msg={msg} onCopy={copyToClipboard} onDownload={triggerDownload} t={t} />
@@ -1327,7 +1318,6 @@ export default function App() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input */}
           <div style={{ background: 'rgba(20,20,30,0.85)', backdropFilter: 'blur(20px)', padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             {activeTab === 'elevenlabs' && !voiceId ? (
               <button
@@ -1407,7 +1397,6 @@ export default function App() {
                 <div style={{ fontSize: '11px', color: '#8696a0', marginBottom: '14px', letterSpacing: '0.05em' }}>
                   {interpolate(library.length === 1 ? t.clipsCount : t.clipsCountPlural, { n: library.length })}
                 </div>
-
                 {library.length === 0 ? (
                   <p style={{ fontSize: '13px', color: '#8696a0' }}>{t.noSavedClips}</p>
                 ) : (
@@ -1458,7 +1447,6 @@ export default function App() {
                 <div style={{ fontSize: '11px', color: '#8696a0', marginBottom: '14px', letterSpacing: '0.05em' }}>
                   {interpolate(presets.length === 1 ? t.presetsCount : t.presetsCountPlural, { n: presets.length })}
                 </div>
-
                 <div style={{ marginBottom: '16px' }}>
                   <label className="hx-label-sm">{t.saveCurrentSetup}</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
@@ -1472,7 +1460,6 @@ export default function App() {
                     {interpolate(t.captures, { summary: comboSummary(voices, voice, selectedMode, translateOn, targetLang) })}
                   </div>
                 </div>
-
                 {presets.length === 0 ? (
                   <p style={{ fontSize: '13px', color: '#8696a0' }}>{t.noPresetsYet}</p>
                 ) : (
@@ -1495,7 +1482,6 @@ export default function App() {
             {menuTab === 'batch' && (
               <>
                 <p style={{ fontSize: '12px', color: '#8696a0', marginBottom: '14px' }}>{t.batchHelp}</p>
-
                 <div style={{ marginBottom: '12px' }}>
                   <label className="hx-label-sm">{t.presetOptional}</label>
                   <select className="hx-input" value={batchPresetId} onChange={e => setBatchPresetId(e.target.value)}>
@@ -1503,7 +1489,6 @@ export default function App() {
                     {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
-
                 <div style={{ marginBottom: '12px' }}>
                   <label className="hx-label-sm">{t.filenamePrefix}</label>
                   <input className="hx-input" value={batchPrefix} onChange={e => setBatchPrefix(e.target.value)} placeholder="clip" />
@@ -1511,14 +1496,12 @@ export default function App() {
                     {interpolate(t.filesWillBe, { prefix: batchPrefix || 'clip' })}
                   </div>
                 </div>
-
                 <div style={{ marginBottom: '12px' }}>
                   <label className="hx-label-sm">{t.lines}</label>
                   <textarea className="hx-input" value={batchText} onChange={e => setBatchText(e.target.value)}
                     placeholder={'Hello world\nSecond clip\nThird one'} rows={6}
                     style={{ resize: 'vertical', fontFamily: 'inherit' }} />
                 </div>
-
                 {batchRunning ? (
                   <>
                     <div style={{ fontSize: '12px', color: '#8696a0', marginBottom: '6px' }}>
@@ -1595,11 +1578,9 @@ export default function App() {
                 </div>
               )}
             </div>
-
             <div style={{ fontSize: '10.5px', color: '#8696a0', marginBottom: '12px', letterSpacing: '0.05em' }}>
               {t.tapToPreviewHoldToFav}
             </div>
-
             {activeTab === 'elevenlabs' ? (
               <p style={{ fontSize: '13px', color: '#8696a0' }}>
                 {voiceId ? t.voiceCloneReady : t.voiceCloneRecordFirst}
@@ -1719,12 +1700,8 @@ export default function App() {
         </div>
       )}
 
-      {/* ══ NAME PROMPT ══ */}
-      {namePrompt && (
-        <NamePromptModal prompt={namePrompt} onResolve={resolveNamePrompt} t={t} />
-      )}
+      {namePrompt && <NamePromptModal prompt={namePrompt} onResolve={resolveNamePrompt} t={t} />}
 
-      {/* ══ PRESET PROMPT ══ */}
       {presetPrompt && (
         <PresetPromptModal
           prompt={presetPrompt}
@@ -1740,7 +1717,7 @@ export default function App() {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  CHAT BUBBLE
+//  CHAT BUBBLE — hides text when audio is present (unless translated)
 // ═══════════════════════════════════════════════════════════
 function ChatBubble({ msg, onCopy, onDownload, t }) {
   const [showTranslated, setShowTranslated] = useState(true);
@@ -1751,6 +1728,7 @@ function ChatBubble({ msg, onCopy, onDownload, t }) {
     if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1500); }
   }
 
+  // User bubble — always shows text
   if (msg.type === 'user') {
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
@@ -1774,15 +1752,21 @@ function ChatBubble({ msg, onCopy, onDownload, t }) {
   }
 
   const hasTranslation = !!(msg.originalText && msg.translatedText && msg.originalText !== msg.translatedText);
+
+  // Show the text block only when:
+  //  - has translation (so user sees original/translated toggle + copy)
+  //  - OR it's a pure text message (no audio) — like welcome or errors
+  const showTextBlock = hasTranslation || !msg.audio;
+
   const displayedText = hasTranslation
     ? (showTranslated ? msg.translatedText : msg.originalText)
-    : msg.text || msg.spokenText;
+    : (msg.text || '');
 
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '12px' }}>
       <div style={{
         maxWidth: 'min(78%, 560px)',
-        padding: msg.audio ? '12px' : '12px 16px',
+        padding: (msg.audio && !hasTranslation) ? '10px' : '12px 16px',
         borderRadius: '18px',
         background: 'rgba(255,255,255,0.08)',
         backdropFilter: 'blur(10px)',
@@ -1790,7 +1774,7 @@ function ChatBubble({ msg, onCopy, onDownload, t }) {
         boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
         border: '1px solid rgba(255,255,255,0.05)',
       }}>
-        {displayedText && (
+        {showTextBlock && displayedText && (
           <div style={{ marginBottom: msg.audio ? '10px' : '0' }}>
             {hasTranslation && (
               <div style={{ marginBottom: '8px' }}>
