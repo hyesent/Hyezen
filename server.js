@@ -1,6 +1,7 @@
 // ============================================================
-//  HYEZEN TTS v11 – V1 PROSODY ENRICHMENT
-//  Adds: fillers, elongation, caps awareness, conversation mode
+//  HYEZEN TTS v11 – V1 PROSODY ENRICHMENT + CLEAN ERRORS
+//  Adds: fillers, elongation, caps awareness, question marks
+//  Errors: classified, user-friendly messages (no raw stderr)
 // ============================================================
 
 import 'dotenv/config';
@@ -32,10 +33,115 @@ app.use(express.json({ limit: '50mb' }));
 app.use('/audio', express.static(path.join(__dirname, 'audio')));
 app.use('/cache', express.static(path.join(__dirname, 'cache')));
 
-// Ensure directories
 ['audio', 'cache'].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 });
+
+// ============================================================
+//  ERROR CLASSIFIER
+//  Maps raw errors to short, user-friendly responses.
+//  Full details always logged server-side.
+// ============================================================
+function classifyError(err, context = {}) {
+  const raw = (err && err.message) ? err.message : String(err || 'unknown');
+  const lower = raw.toLowerCase();
+
+  // --- Input errors (user's fault, clear message) ---
+  if (!context.text || !context.text.trim()) {
+    return {
+      status: 400,
+      code: 'EMPTY_TEXT',
+      message: 'No text provided. Type something to generate.',
+    };
+  }
+  if (context.text.length > 5000) {
+    return {
+      status: 400,
+      code: 'TEXT_TOO_LONG',
+      message: 'Text is too long for a single generation. Try splitting it into smaller chunks.',
+    };
+  }
+
+  // --- Voice issues ---
+  if (lower.includes('no voice') || lower.includes('invalid voice') || lower.includes('voice not found')) {
+    return {
+      status: 400,
+      code: 'INVALID_VOICE',
+      message: 'This voice is not available. Try picking a different voice.',
+    };
+  }
+
+  // --- Empty output from edge-tts ---
+  if (lower.includes('audio file empty') || lower.includes('empty audio')) {
+    return {
+      status: 502,
+      code: 'EMPTY_AUDIO',
+      message: 'The voice engine returned empty audio. Try a different voice or shorter text.',
+    };
+  }
+
+  // --- edge-tts specific failures ---
+  if (lower.includes('edge_tts') || lower.includes('edge-tts') || lower.includes('modulenotfounderror') || lower.includes('no module named')) {
+    return {
+      status: 503,
+      code: 'ENGINE_UNAVAILABLE',
+      message: 'Voice engine is temporarily unavailable. Please try again in a moment.',
+    };
+  }
+  if (lower.includes('connection') || lower.includes('network') || lower.includes('timeout') || lower.includes('socket')) {
+    return {
+      status: 503,
+      code: 'ENGINE_CONNECTION',
+      message: 'The voice engine could not be reached. Check your connection and try again.',
+    };
+  }
+  if (lower.includes('403') || lower.includes('401') || lower.includes('forbidden') || lower.includes('unauthorized')) {
+    return {
+      status: 503,
+      code: 'ENGINE_AUTH',
+      message: 'Voice engine authentication failed. This is a server issue — please report it.',
+    };
+  }
+  if (lower.includes('429') || lower.includes('rate limit') || lower.includes('too many requests')) {
+    return {
+      status: 429,
+      code: 'RATE_LIMITED',
+      message: 'Too many requests right now. Please wait a few seconds and try again.',
+    };
+  }
+
+  // --- ElevenLabs ---
+  if (lower.includes('elevenlabs')) {
+    return {
+      status: 502,
+      code: 'ELEVENLABS_ERROR',
+      message: 'Voice cloning service is having trouble. Try again or use a built-in voice.',
+    };
+  }
+
+  // --- Filesystem ---
+  if (lower.includes('enospc') || lower.includes('no space')) {
+    return {
+      status: 507,
+      code: 'STORAGE_FULL',
+      message: 'Server storage is full. Please try again later.',
+    };
+  }
+  if (lower.includes('eacces') || lower.includes('permission denied')) {
+    return {
+      status: 500,
+      code: 'FILE_ACCESS',
+      message: 'Server could not save the audio file. Please try again.',
+    };
+  }
+
+  // --- Fallback (never leak raw stderr) ---
+  return {
+    status: 500,
+    code: 'GENERATION_FAILED',
+    message: 'Voice generation failed unexpectedly. Try again, or pick a different voice.',
+  };
+}
 
 // ============================================================
 //  CUSTOM SENTENCE SPLITTER
@@ -48,7 +154,6 @@ function getSentences(text) {
 // ============================================================
 //  HARDCODED VOICE LISTS
 // ============================================================
-
 const REALISTIC_VOICES = [
   { name: 'en-US-JennyNeural', label: 'Jenny (US)', locale: 'en-US', quality: 'premium' },
   { name: 'en-US-AriaNeural', label: 'Aria (US)', locale: 'en-US', quality: 'premium' },
@@ -303,7 +408,7 @@ function detectLanguageWithConfidence(text) {
 }
 
 // ============================================================
-//  PRONUNCIATION DICTIONARY
+//  PRONUNCIATION
 // ============================================================
 const PRONUNCIATION_DICT = {
   'HYEZEN': 'H Y E Z E N',
@@ -321,7 +426,7 @@ function applyPronunciation(text) {
 }
 
 // ============================================================
-//  PUNCTUATION PAUSES
+//  PAUSE TABLE (reserved for v2 segment control)
 // ============================================================
 function getPauseDuration(char, multiplier = 1.0) {
   const map = {
@@ -342,7 +447,7 @@ function getPauseDuration(char, multiplier = 1.0) {
 }
 
 // ============================================================
-//  EMOTION DETECTION
+//  EMOTION
 // ============================================================
 const EMOTION_KEYWORDS = {
   happy: ['happy', 'joy', 'celebrate', 'glad', 'cheerful', 'smile'],
@@ -424,12 +529,8 @@ function applyCharacterVoices(text, characterMap) {
 }
 
 // ============================================================
-//  ⭐ NEW — V1 PROSODY ENRICHMENT
-//  Fillers, elongation, caps awareness.
-//  Runs before processText's other passes.
+//  ⭐ V1 PROSODY ENRICHMENT
 // ============================================================
-
-// Filler patterns — standalone only (word boundaries on both sides)
 const FILLER_PATTERNS = [
   /\buh+\b/gi,
   /\buhm+\b/gi,
@@ -442,10 +543,7 @@ const FILLER_PATTERNS = [
   /\bm+hm+\b/gi,
 ];
 
-// Caps detection — 2+ uppercase letters, standalone
 const CAPS_WORD_RE = /\b[A-Z]{2,}\b/g;
-
-// Words we treat as neutral even if caps (acronyms, common non-emphatic)
 const CAPS_WHITELIST = new Set(['OK', 'OKAY', 'AI', 'US', 'UK', 'USA', 'PM', 'AM', 'TV']);
 
 function enrichProsody(text, options = {}) {
@@ -460,23 +558,18 @@ function enrichProsody(text, options = {}) {
   let elongationCount = 0;
   let capsWords = [];
 
-  // 1. Fillers → append "..." if not already
   if (fillersOn) {
     for (const re of FILLER_PATTERNS) {
       out = out.replace(re, (match) => {
-        // Check if ellipsis already follows (approximately — cheap check)
         fillerCount++;
         return match + '...';
       });
     }
-    // Collapse accidental double ellipsis: "uh..... " → "uh... "
     out = out.replace(/\.{4,}/g, '...');
   }
 
-  // 2. Elongation — repeat last vowel on short duplicate words
   if (elongationOn) {
     out = out.replace(/\b(\w{2,5})\s+\1\b/gi, (match, word) => {
-      // Only if the word ends in a vowel
       if (!/[aeiou]$/i.test(word)) return match;
       const lastVowel = word[word.length - 1];
       const elongated = word + lastVowel + lastVowel;
@@ -485,12 +578,9 @@ function enrichProsody(text, options = {}) {
     });
   }
 
-  // 3. Caps detection
   if (capsAwareness) {
     const matches = out.match(CAPS_WORD_RE) || [];
     capsWords = matches.filter(w => !CAPS_WHITELIST.has(w));
-    // Note: we do NOT modify the text. Caps is a signal only.
-    // The pitch nudge is applied later in processText.
   }
 
   return {
@@ -516,11 +606,11 @@ const NARRATION_MODES = {
   whisper: { speed: 0.70, pitch: 5 },
   dramatic: { speed: 0.75, pitch: -5 },
   fast_talker: { speed: 1.4, pitch: 0 },
-  conversation: { speed: 0.95, pitch: 1 },   // ⭐ NEW
+  conversation: { speed: 0.95, pitch: 1 },
 };
 
 // ============================================================
-//  TEXT PROCESSOR — now with enrichment
+//  TEXT PROCESSOR — v1 enrichment + question mark handling
 // ============================================================
 function processText({
   text,
@@ -545,11 +635,11 @@ function processText({
     .replace(/\s+/g, ' ')
     .trim();
 
-  // ⭐ NEW — enrichment pass (fillers, elongation, caps detection)
+  // Enrichment
   const enrichment = enrichProsody(processed, { fillersOn, elongationOn, capsAwareness });
   processed = enrichment.text;
 
-  // User & default pronunciation
+  // Pronunciation
   if (userPronunciation) {
     for (const [word, pron] of Object.entries(userPronunciation)) {
       processed = processed.replace(new RegExp(`\\b${word}\\b`, 'gi'), pron);
@@ -557,13 +647,15 @@ function processText({
   }
   processed = applyPronunciation(processed);
 
-  // Language detection
+  // Language + numbers
   const { lang } = detectLanguageWithConfidence(processed);
-
-  // Number normalization
   processed = normalizeNumbersLang(processed, lang);
 
-  // Emotion — caps emphasis overrides to excited if no other clear signal
+  // ⭐ Question mark detection — Option 1
+  // Fires only if the sentence actually ends in a question mark.
+  const isQuestionEnd = /\?\s*["')\]]*\s*$/.test(processed);
+
+  // Emotion
   if (!emotion) {
     const detected = detectEmotion(processed);
     if (enrichment.capsEmphasis && detected === 'neutral') {
@@ -574,27 +666,31 @@ function processText({
   }
   const emotionProsody = getEmotionProsody(emotion);
 
-  // Character voices
+  // Character markers
   processed = applyCharacterVoices(processed, characterMap);
 
-  // Apply mode
+  // Mode
   const modeSettings = NARRATION_MODES[mode] || NARRATION_MODES.story;
-  const finalSpeed = speed * (1 + (emotionProsody.rate / 100)) * (modeSettings.speed / 1.0);
 
-  // Caps emphasis → +2 pitch nudge (sentence-level)
+  // ⭐ Caps emphasis → +2 pitch
   const capsBoost = (enrichment.capsEmphasis && capsAwareness) ? 2 : 0;
-  const finalPitch = pitch + emotionProsody.pitch + (modeSettings.pitch || 0) + capsBoost;
 
-  // Convert to edge-tts format
+  // ⭐ Question mark → +3 pitch, −3% rate (Option 1)
+  const questionPitchBoost = isQuestionEnd ? 3 : 0;
+  const questionRateMult = isQuestionEnd ? 0.97 : 1.0;
+
+  const finalSpeed = speed * (1 + (emotionProsody.rate / 100)) * (modeSettings.speed / 1.0) * questionRateMult;
+  const finalPitch = pitch + emotionProsody.pitch + (modeSettings.pitch || 0) + capsBoost + questionPitchBoost;
+
   const rateValue = Math.round((finalSpeed - 1) * 100);
   const rateStr = rateValue !== 0 ? `${rateValue > 0 ? '+' : ''}${rateValue}%` : '';
 
-  const pitchValue = Math.round(finalPitch * 2); // percentage → Hz
+  const pitchValue = Math.round(finalPitch * 2);
   const pitchStr = pitchValue !== 0 ? `${pitchValue > 0 ? '+' : ''}${pitchValue}Hz` : '';
 
   console.log(
     `📊 Speed: ${finalSpeed.toFixed(2)}x (${rateStr}), Pitch: ${finalPitch}% (${pitchStr})` +
-    ` | fillers:${enrichment.fillerCount} elong:${enrichment.elongationCount} caps:${enrichment.capsEmphasis}`
+    ` | fillers:${enrichment.fillerCount} elong:${enrichment.elongationCount} caps:${enrichment.capsEmphasis} q:${isQuestionEnd}`
   );
 
   return {
@@ -609,11 +705,12 @@ function processText({
     capsWords: enrichment.capsWords,
     fillerCount: enrichment.fillerCount,
     elongationCount: enrichment.elongationCount,
+    questionMark: isQuestionEnd,
   };
 }
 
 // ============================================================
-//  EDGE-TTS WRAPPER
+//  EDGE-TTS WRAPPER (throws classified errors)
 // ============================================================
 function edgeTTS(voice, text, outputFile, rate = '', pitch = '') {
   return new Promise((resolve, reject) => {
@@ -627,23 +724,29 @@ function edgeTTS(voice, text, outputFile, rate = '', pitch = '') {
     console.log(`📝 Text length: ${text.length} chars`);
     console.log(`⚡ Rate: ${rate || 'default'}, Pitch: ${pitch || 'default'}`);
 
-    exec(cmd, (error, stdout, stderr) => {
+    exec(cmd, { timeout: 60000 }, (error, stdout, stderr) => {
       if (error) {
-        console.error('❌ Edge-TTS error:', error.message);
-        console.error('stderr:', stderr);
+        // Don't leak raw stderr to the client — but log everything server-side
+        console.error('❌ Edge-TTS failed');
+        console.error('   message:', error.message);
+        console.error('   stderr:', stderr ? stderr.slice(0, 500) : '(none)');
+        // Attach stderr to the error so classifyError can inspect it
+        error.stderr = stderr || '';
         reject(error);
-      } else if (!fs.existsSync(outputFile) || fs.statSync(outputFile).size === 0) {
-        reject(new Error('Audio file empty'));
-      } else {
-        console.log(`✅ Audio generated (${(fs.statSync(outputFile).size / 1024).toFixed(1)} KB)`);
-        resolve();
+        return;
       }
+      if (!fs.existsSync(outputFile) || fs.statSync(outputFile).size === 0) {
+        reject(new Error('Audio file empty'));
+        return;
+      }
+      console.log(`✅ Audio generated (${(fs.statSync(outputFile).size / 1024).toFixed(1)} KB)`);
+      resolve();
     });
   });
 }
 
 // ============================================================
-//  CACHE DATABASE
+//  CACHE
 // ============================================================
 const CACHE_DB_PATH = path.join(__dirname, 'cache_db.json');
 function loadCacheDB() {
@@ -690,7 +793,6 @@ function addCacheEntry(text, voice, speed, pitch, mode, format, filepath, durati
 // ============================================================
 //  API ENDPOINTS
 // ============================================================
-
 app.get('/api/voices/:type', (req, res) => {
   const { type } = req.params;
   if (type === 'realistic') return res.json(REALISTIC_VOICES);
@@ -704,59 +806,84 @@ app.get('/api/modes', (req, res) => {
   res.json(Object.keys(NARRATION_MODES));
 });
 
-// ElevenLabs endpoints
+// --- ElevenLabs ---
 app.post('/api/elevenlabs/clone', async (req, res) => {
   try {
     const { audioBase64, name } = req.body;
+    if (!audioBase64) {
+      return res.status(400).json({
+        success: false,
+        code: 'NO_AUDIO',
+        error: 'No audio sample was received. Record again and try.',
+      });
+    }
     const audioBuffer = Buffer.from(audioBase64, 'base64');
     const form = new FormData();
     form.append('name', name || `Voice_${Date.now()}`);
-    form.append('files', audioBuffer, {filename: 'sample.mp3'});
+    form.append('files', audioBuffer, { filename: 'sample.mp3' });
 
     const response = await fetch('https://api.elevenlabs.io/v1/voices/add', {
       method: 'POST',
-      headers: {'xi-api-key': process.env.ELEVENLABS_API_KEY, ...form.getHeaders()},
-      body: form
+      headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, ...form.getHeaders() },
+      body: form,
     });
 
     const data = await response.json();
     if (data.voice_id) {
-      res.json({success: true, voice_id: data.voice_id});
+      res.json({ success: true, voice_id: data.voice_id });
     } else {
-      res.status(400).json({error: data.detail || 'Clone failed'});
+      res.status(400).json({
+        success: false,
+        code: 'CLONE_FAILED',
+        error: data.detail?.message || data.detail || 'Voice cloning failed. Try a longer or clearer sample.',
+      });
     }
   } catch (e) {
-    res.status(500).json({error: e.message});
+    console.error('clone error:', e);
+    const c = classifyError(e, { text: 'audio sample' });
+    res.status(c.status).json({ success: false, code: c.code, error: c.message });
   }
 });
 
 app.post('/api/elevenlabs/tts', async (req, res) => {
   try {
     const { text, voice_id } = req.body;
+    if (!text) {
+      return res.status(400).json({ success: false, code: 'EMPTY_TEXT', error: 'No text provided.' });
+    }
+    if (!voice_id) {
+      return res.status(400).json({ success: false, code: 'NO_VOICE', error: 'No cloned voice selected. Record a sample first.' });
+    }
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
       method: 'POST',
       headers: {
         'xi-api-key': process.env.ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({text, model_id: 'eleven_multilingual_v2'})
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }),
     });
 
-    if (!response.ok) throw new Error(`ElevenLabs error: ${response.status}`);
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(`elevenlabs ${response.status} ${detail.slice(0, 200)}`);
+    }
 
     const buffer = await response.buffer();
     const filename = `eleven_${uuidv4()}.mp3`;
     fs.writeFileSync(path.join(__dirname, 'audio', filename), buffer);
-    res.json({success: true, url: `/audio/${filename}`});
+    res.json({ success: true, url: `/audio/${filename}` });
   } catch (e) {
-    res.status(500).json({error: e.message});
+    console.error('eleven tts error:', e);
+    const c = classifyError(e, { text: req.body?.text });
+    res.status(c.status).json({ success: false, code: c.code, error: c.message });
   }
 });
 
 // ============================================================
-//  MAIN TTS ENDPOINT (v1 enrichment + Lab flags)
+//  MAIN TTS ENDPOINT
 // ============================================================
 app.post('/api/tts', async (req, res) => {
+  let context = { text: req.body?.text || '' };
   try {
     let {
       text,
@@ -768,42 +895,63 @@ app.post('/api/tts', async (req, res) => {
       emotion,
       characters,
       user_pronunciation,
-      // ⭐ NEW — Lab / v1 flags
       capsAwareness = true,
       fillersOn = true,
       elongationOn = true,
       v2Engine = false,
     } = req.body;
 
-    if (!text) return res.status(400).json({ error: 'Text required' });
-
-    if (type === 'robotic') return res.json({ success: true, robotic: true, text, voice });
-    if (type === 'xtts') return res.status(400).json({ error: 'XTTS not in this route, use /api/elevenlabs/tts' });
-
-    // v2 not yet wired — log and fall through to v1
-    if (v2Engine) {
-      console.log('⚠️  v2Engine requested but not implemented yet — falling back to v1 pipeline');
+    // ── Input validation (friendly messages) ──
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        code: 'EMPTY_TEXT',
+        error: 'Type something to generate voice.',
+      });
+    }
+    if (text.length > 5000) {
+      return res.status(400).json({
+        success: false,
+        code: 'TEXT_TOO_LONG',
+        error: `Text is too long (${text.length} chars). Split it into smaller chunks — 5000 is the max.`,
+      });
+    }
+    if (typeof speed !== 'number' || speed < 0.5 || speed > 2.5) {
+      speed = 1.0;
+    }
+    if (typeof pitch !== 'number' || Math.abs(pitch) > 50) {
+      pitch = 0;
     }
 
-    // Auto-select voice if not provided
+    if (type === 'robotic') {
+      return res.json({ success: true, robotic: true, text, voice });
+    }
+    if (type === 'xtts') {
+      return res.status(400).json({
+        success: false,
+        code: 'WRONG_ROUTE',
+        error: 'XTTS uses a different endpoint. Please try again.',
+      });
+    }
+
+    if (v2Engine) {
+      console.log('⚠️  v2Engine requested but not implemented — falling back to v1');
+    }
+
+    // ── Voice resolution ──
     if (!voice) {
       const { lang } = detectLanguageWithConfidence(text);
-      voice = getVoiceForLanguage(lang);
-      if (!voice) voice = 'en-US-JennyNeural';
+      voice = getVoiceForLanguage(lang) || 'en-US-JennyNeural';
     }
 
-    // Validate voice (fallback)
     const voiceList = type === 'realistic' ? REALISTIC_VOICES : FAIR_VOICES;
     if (!voiceList.some(v => v.name === voice)) {
       const { lang } = detectLanguageWithConfidence(text);
-      const fallback = getVoiceForLanguage(lang) || 'en-US-JennyNeural';
-      voice = fallback;
+      voice = getVoiceForLanguage(lang) || 'en-US-JennyNeural';
     }
 
-    // Cache key includes v1 flags so outputs don't collide
+    // ── Cache ──
     const extras = `${capsAwareness ? 'c1' : 'c0'}${fillersOn ? 'f1' : 'f0'}${elongationOn ? 'e1' : 'e0'}${v2Engine ? 'v2' : 'v1'}`;
-
-    // Check cache
     const cacheEntry = getCacheEntry(text, voice, speed, pitch, mode, 'mp3', extras);
     if (cacheEntry) {
       return res.json({
@@ -819,7 +967,7 @@ app.post('/api/tts', async (req, res) => {
       });
     }
 
-    // Process text with v1 enrichment
+    // ── Text processing (v1 enrichment + question handling) ──
     const processed = processText({
       text,
       voice,
@@ -834,12 +982,25 @@ app.post('/api/tts', async (req, res) => {
       elongationOn,
     });
 
-    // Generate audio
+    // ── Generate ──
     const filename = `${type}_${uuidv4()}.mp3`;
     const filepath = path.join(__dirname, 'audio', filename);
-    await edgeTTS(voice, processed.text, filepath, processed.rateStr, processed.pitchStr);
 
-    // Metadata
+    try {
+      await edgeTTS(voice, processed.text, filepath, processed.rateStr, processed.pitchStr);
+    } catch (genErr) {
+      // Classify and return clean error
+      const c = classifyError(genErr, context);
+      // Clean up any half-written file
+      try { if (fs.existsSync(filepath)) fs.unlinkSync(filepath); } catch {}
+      return res.status(c.status).json({
+        success: false,
+        code: c.code,
+        error: c.message,
+      });
+    }
+
+    // ── Metadata ──
     const size = fs.statSync(filepath).size;
     let duration = 0;
     try {
@@ -847,15 +1008,12 @@ app.post('/api/tts', async (req, res) => {
       const ffprobeCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filepath}"`;
       await new Promise((resolve) => {
         execFF(ffprobeCmd, (error, stdout) => {
-          if (!error && stdout) {
-            duration = parseFloat(stdout) || 0;
-          }
+          if (!error && stdout) duration = parseFloat(stdout) || 0;
           resolve();
         });
       });
     } catch {}
 
-    // Cache
     addCacheEntry(text, voice, speed, pitch, mode, 'mp3', filepath, duration, size, extras);
 
     res.json({
@@ -870,19 +1028,29 @@ app.post('/api/tts', async (req, res) => {
       emotion: processed.emotion,
       rate: processed.rateStr || 'default',
       pitch: processed.pitchStr || 'default',
-      // ⭐ NEW — v1 signal report (Lab uses these)
+      // v1 signal report
       capsEmphasis: processed.capsEmphasis,
       capsWords: processed.capsWords,
       fillerCount: processed.fillerCount,
       elongationCount: processed.elongationCount,
+      questionMark: processed.questionMark,
       v2Engine: false,
     });
+
   } catch (e) {
-    console.error('TTS error:', e);
-    res.status(500).json({ error: e.message });
+    console.error('TTS handler error:', e);
+    const c = classifyError(e, context);
+    res.status(c.status).json({
+      success: false,
+      code: c.code,
+      error: c.message,
+    });
   }
 });
 
+// ============================================================
+//  HEALTH
+// ============================================================
 app.get('/api/health', (req, res) => {
   const db = loadCacheDB();
   res.json({
@@ -897,12 +1065,13 @@ app.get('/api/health', (req, res) => {
 });
 
 // ============================================================
-//  START SERVER
+//  START
 // ============================================================
 app.listen(PORT, () => {
   console.log(`🚀 HYEZEN TTS v11 running on port ${PORT}`);
   console.log(`✅ Realistic: ${REALISTIC_VOICES.length} voices, Fair: ${FAIR_VOICES.length}`);
   console.log('✅ Modes:', Object.keys(NARRATION_MODES).join(', '));
-  console.log('✅ V1 enrichment: fillers, elongation, caps awareness');
+  console.log('✅ V1: fillers, elongation, caps, question marks');
+  console.log('✅ Errors: classified + friendly (no raw stderr leaks)');
   console.log('⚠️  V2 engine: stubbed — awaiting implementation');
 });
