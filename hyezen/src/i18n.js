@@ -51,6 +51,8 @@ export const STRINGS = {
     off: 'OFF',
     chooseYourLanguage: 'Choose your language',
     continueInEnglish: 'Continue in English',
+    speed: 'Speed',
+    untitled: 'Untitled Story',
 
     chooseVoice: 'Choose voice',
     narrationMode: 'Narration mode',
@@ -78,7 +80,6 @@ export const STRINGS = {
     voiceCloneRecordFirst: 'Record a sample first — hold the button below.',
 
     noModesAvailable: 'No modes available.',
-
     noLanguagesAvailable: 'No languages available.',
 
     voiceMatchTitle: 'Voice match',
@@ -198,7 +199,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  FRENCH  (vous form)
+  //  FRENCH
   // ═══════════════════════════════════════════════════════
   fr: {
     voice: 'VOIX',
@@ -207,6 +208,8 @@ export const STRINGS = {
     off: 'DÉSACTIVÉ',
     chooseYourLanguage: 'Choisissez votre langue',
     continueInEnglish: 'Continuer en anglais',
+    speed: 'Vitesse',
+    untitled: 'Histoire sans titre',
 
     chooseVoice: 'Choisir une voix',
     narrationMode: 'Mode de narration',
@@ -353,7 +356,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  SPANISH  (tú form)
+  //  SPANISH
   // ═══════════════════════════════════════════════════════
   es: {
     voice: 'VOZ',
@@ -362,6 +365,8 @@ export const STRINGS = {
     off: 'APAGADO',
     chooseYourLanguage: 'Elige tu idioma',
     continueInEnglish: 'Continuar en inglés',
+    speed: 'Velocidad',
+    untitled: 'Historia sin título',
 
     chooseVoice: 'Elegir voz',
     narrationMode: 'Modo de narración',
@@ -508,7 +513,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  PORTUGUESE  (Brazilian, você form)
+  //  PORTUGUESE
   // ═══════════════════════════════════════════════════════
   pt: {
     voice: 'VOZ',
@@ -517,6 +522,8 @@ export const STRINGS = {
     off: 'DESLIGADO',
     chooseYourLanguage: 'Escolha seu idioma',
     continueInEnglish: 'Continuar em inglês',
+    speed: 'Velocidade',
+    untitled: 'História sem título',
 
     chooseVoice: 'Escolher voz',
     narrationMode: 'Modo de narração',
@@ -663,7 +670,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  ARABIC  (Modern Standard, RTL)
+  //  ARABIC
   // ═══════════════════════════════════════════════════════
   ar: {
     voice: 'الصوت',
@@ -672,6 +679,8 @@ export const STRINGS = {
     off: 'متوقف',
     chooseYourLanguage: 'اختر لغتك',
     continueInEnglish: 'المتابعة باللغة الإنجليزية',
+    speed: 'السرعة',
+    untitled: 'قصة بلا عنوان',
 
     chooseVoice: 'اختر الصوت',
     narrationMode: 'نمط السرد',
@@ -818,7 +827,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  HINDI  (formal आप form)
+  //  HINDI
   // ═══════════════════════════════════════════════════════
   hi: {
     voice: 'आवाज़',
@@ -827,6 +836,8 @@ export const STRINGS = {
     off: 'बंद',
     chooseYourLanguage: 'अपनी भाषा चुनें',
     continueInEnglish: 'अंग्रेज़ी में जारी रखें',
+    speed: 'गति',
+    untitled: 'अनाम कहानी',
 
     chooseVoice: 'आवाज़ चुनें',
     narrationMode: 'वर्णन मोड',
@@ -973,7 +984,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  CHINESE  (Simplified Mandarin)
+  //  CHINESE
   // ═══════════════════════════════════════════════════════
   zh: {
     voice: '声音',
@@ -982,6 +993,8 @@ export const STRINGS = {
     off: '关闭',
     chooseYourLanguage: '选择您的语言',
     continueInEnglish: '继续使用英语',
+    speed: '速度',
+    untitled: '未命名故事',
 
     chooseVoice: '选择声音',
     narrationMode: '旁白模式',
@@ -1128,7 +1141,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  KOREAN  (polite 요 form)
+  //  KOREAN
   // ═══════════════════════════════════════════════════════
   ko: {
     voice: '음성',
@@ -1137,6 +1150,8 @@ export const STRINGS = {
     off: '꺼짐',
     chooseYourLanguage: '언어를 선택하세요',
     continueInEnglish: '영어로 계속',
+    speed: '속도',
+    untitled: '제목 없는 이야기',
 
     chooseVoice: '음성 선택',
     narrationMode: '나레이션 모드',
@@ -1283,7 +1298,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  JAPANESE  (です/ます form)
+  //  JAPANESE
   // ═══════════════════════════════════════════════════════
   ja: {
     voice: '音声',
@@ -1292,6 +1307,8 @@ export const STRINGS = {
     off: 'オフ',
     chooseYourLanguage: '言語を選択してください',
     continueInEnglish: '英語で続ける',
+    speed: '速度',
+    untitled: '無題のストーリー',
 
     chooseVoice: '音声を選択',
     narrationMode: 'ナレーションモード',
@@ -1438,7 +1455,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  GERMAN  (Sie form)
+  //  GERMAN
   // ═══════════════════════════════════════════════════════
   de: {
     voice: 'STIMME',
@@ -1447,6 +1464,8 @@ export const STRINGS = {
     off: 'AUS',
     chooseYourLanguage: 'Wählen Sie Ihre Sprache',
     continueInEnglish: 'Auf Englisch fortfahren',
+    speed: 'Tempo',
+    untitled: 'Unbenannte Geschichte',
 
     chooseVoice: 'Stimme wählen',
     narrationMode: 'Erzählmodus',
@@ -1593,7 +1612,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  ITALIAN  (tu form)
+  //  ITALIAN
   // ═══════════════════════════════════════════════════════
   it: {
     voice: 'VOCE',
@@ -1602,6 +1621,8 @@ export const STRINGS = {
     off: 'DISATTIVATO',
     chooseYourLanguage: 'Scegli la tua lingua',
     continueInEnglish: 'Continua in inglese',
+    speed: 'Velocità',
+    untitled: 'Storia senza titolo',
 
     chooseVoice: 'Scegli voce',
     narrationMode: 'Modalità narrazione',
@@ -1748,7 +1769,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  RUSSIAN  (Вы form)
+  //  RUSSIAN
   // ═══════════════════════════════════════════════════════
   ru: {
     voice: 'ГОЛОС',
@@ -1757,6 +1778,8 @@ export const STRINGS = {
     off: 'ВЫКЛ',
     chooseYourLanguage: 'Выберите язык',
     continueInEnglish: 'Продолжить на английском',
+    speed: 'Скорость',
+    untitled: 'Без названия',
 
     chooseVoice: 'Выбрать голос',
     narrationMode: 'Режим повествования',
@@ -1903,7 +1926,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  TURKISH  (siz form)
+  //  TURKISH
   // ═══════════════════════════════════════════════════════
   tr: {
     voice: 'SES',
@@ -1912,6 +1935,8 @@ export const STRINGS = {
     off: 'KAPALI',
     chooseYourLanguage: 'Dilinizi seçin',
     continueInEnglish: 'İngilizce olarak devam et',
+    speed: 'Hız',
+    untitled: 'Başlıksız Hikaye',
 
     chooseVoice: 'Ses seç',
     narrationMode: 'Anlatım modu',
@@ -2058,7 +2083,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  INDONESIAN  (formal Anda form)
+  //  INDONESIAN
   // ═══════════════════════════════════════════════════════
   id: {
     voice: 'SUARA',
@@ -2067,6 +2092,8 @@ export const STRINGS = {
     off: 'MATI',
     chooseYourLanguage: 'Pilih bahasa Anda',
     continueInEnglish: 'Lanjutkan dalam bahasa Inggris',
+    speed: 'Kecepatan',
+    untitled: 'Cerita tanpa judul',
 
     chooseVoice: 'Pilih suara',
     narrationMode: 'Mode narasi',
@@ -2213,7 +2240,7 @@ export const STRINGS = {
   },
 
   // ═══════════════════════════════════════════════════════
-  //  DUTCH  (u form)
+  //  DUTCH
   // ═══════════════════════════════════════════════════════
   nl: {
     voice: 'STEM',
@@ -2222,6 +2249,8 @@ export const STRINGS = {
     off: 'UIT',
     chooseYourLanguage: 'Kies uw taal',
     continueInEnglish: 'Doorgaan in het Engels',
+    speed: 'Snelheid',
+    untitled: 'Naamloos verhaal',
 
     chooseVoice: 'Kies stem',
     narrationMode: 'Vertelmodus',
