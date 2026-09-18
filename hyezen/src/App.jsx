@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://hyezen.onrender.com';
 
-// ── Continent + language metadata ────────────────────────────
 const LANG_META = {
   es: { label: 'Spanish',    continent: 'Europe'   },
   fr: { label: 'French',     continent: 'Europe'   },
@@ -43,10 +42,8 @@ const LANG_META = {
   am: { label: 'Amharic',    continent: 'Africa'   },
 };
 
-// Order continents as they'll appear in the modal
 const CONTINENT_ORDER = ['Africa', 'Asia', 'Europe', 'Americas', 'Oceania'];
 
-// Region code → continent (for voices like en-NG, fr-FR)
 const REGION_TO_CONTINENT = {
   NG: 'Africa', KE: 'Africa', ZA: 'Africa', TZ: 'Africa', EG: 'Africa',
   CN: 'Asia', JP: 'Asia', KR: 'Asia', SA: 'Asia', IN: 'Asia', SG: 'Asia',
@@ -61,7 +58,6 @@ const REGION_TO_CONTINENT = {
   AU: 'Oceania', NZ: 'Oceania',
 };
 
-// ── Translation engine ───────────────────────────────────────
 const TR_CACHE = new Map();
 
 async function fetchWithTimeout(url, opts = {}, ms = 4500) {
@@ -122,7 +118,6 @@ async function translateText(text, target, source = 'auto') {
   return text;
 }
 
-// ── Voice helpers ────────────────────────────────────────────
 function voiceLocale(voiceName) {
   if (!voiceName) return null;
   const m = voiceName.match(/^([a-z]{2})-/);
@@ -150,8 +145,6 @@ function prettyMode(m) {
   return (m || 'story').replace(/_/g, ' ').toUpperCase();
 }
 
-// Group a list of items by continent.
-// getContinent(item) returns a continent name or 'Other'
 function groupByContinent(items, getContinent) {
   const groups = {};
   for (const item of items) {
@@ -159,13 +152,11 @@ function groupByContinent(items, getContinent) {
     if (!groups[c]) groups[c] = [];
     groups[c].push(item);
   }
-  // Sort continents per CONTINENT_ORDER, then append 'Other' if any
   const ordered = [];
   for (const c of CONTINENT_ORDER) {
     if (groups[c]) ordered.push({ continent: c, items: groups[c] });
   }
   if (groups.Other) ordered.push({ continent: 'Other', items: groups.Other });
-  // anything not in CONTINENT_ORDER but not 'Other' falls here too
   const known = new Set([...CONTINENT_ORDER, 'Other']);
   for (const c of Object.keys(groups)) {
     if (!known.has(c)) ordered.push({ continent: c, items: groups[c] });
@@ -199,7 +190,6 @@ export default function App() {
   const [showModeModal, setShowModeModal] = useState(false);
   const [showTranslateModal, setShowTranslateModal] = useState(false);
 
-  // Modal sort mode: 'continent' | 'alpha'
   const [voiceSortMode, setVoiceSortMode] = useState('continent');
   const [translateSortMode, setTranslateSortMode] = useState('continent');
 
@@ -269,7 +259,6 @@ export default function App() {
     speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
-  // ── Nav visibility: hybrid trigger (mouse + scroll + touch), idle 5s ──
   useEffect(() => {
     function show() {
       setNavVisible(true);
@@ -556,9 +545,7 @@ export default function App() {
     });
   }
 
-  // ── Build grouped lists for modals ───────────────────────────
   function buildVoiceGroups() {
-    // Only group non-robotic voices (robotic has no locale)
     if (activeTab === 'robotic' || activeTab === 'elevenlabs') {
       return [{ continent: null, items: voices }];
     }
@@ -634,24 +621,77 @@ export default function App() {
         .hx-labels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 2px; }
         .hx-label { font-size: 9px; font-weight: 700; letter-spacing: 0.22em; color: #8696a0; text-align: center; opacity: 0.65; }
 
-        .hx-pills-row { position: relative; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding-top: 20px; }
+        /* Pill row: three equal cells. Each cell holds the bent wire + pill.
+           Horizontal segments are drawn as pseudo elements between cells. */
+        .hx-pills-row {
+          position: relative;
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 8px;
+          padding-top: 20px;
+        }
 
-        .hx-connector { position: absolute; top: 0; width: 60px; height: 20px; overflow: visible; pointer-events: none; }
-        .hx-conn-voice { left: calc(16.66% - 30px); }
-        .hx-conn-modes { left: calc(50% - 30px); }
-        .hx-conn-translation { left: calc(83.33% - 30px); }
-        .hx-wire { fill: none; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 3 5; animation: hx-pulse 1.8s linear infinite; }
+        .hx-cell { position: relative; }
+
+        .hx-connector {
+          position: absolute;
+          top: -20px;
+          left: 50%;
+          width: 60px;
+          height: 20px;
+          transform: translateX(-50%);
+          overflow: visible;
+          pointer-events: none;
+        }
+        .hx-wire {
+          fill: none;
+          stroke-width: 1.2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          stroke-dasharray: 3 5;
+          animation: hx-pulse 1.8s linear infinite;
+        }
         .hx-conn-voice .hx-wire { stroke: #00a884; }
         .hx-conn-modes .hx-wire { stroke: #a855f7; }
         .hx-conn-translation .hx-wire { stroke: #3b82f6; }
         .hx-conn-translation.off .hx-wire { stroke: #4b5563; opacity: 0.3; animation: none; }
         @keyframes hx-pulse { to { stroke-dashoffset: -20; } }
 
-        .hx-chain-line { position: absolute; top: 44px; left: 16.66%; right: 16.66%; height: 1.2px; background: linear-gradient(90deg, transparent, #00a884 15%, #a855f7 50%, #3b82f6 85%, transparent); background-size: 200% 100%; animation: hx-chain-flow 3s linear infinite; opacity: 0.5; z-index: 0; }
-        @keyframes hx-chain-flow { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+        /* Horizontal segments between pills.
+           Each sits at the vertical center of the pills (top: 50% of the row). */
+        .hx-seg {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          height: 1.6px;
+          pointer-events: none;
+          z-index: 0;
+          border-radius: 2px;
+        }
+        .hx-seg-voice-modes {
+          left: calc(33.333% - 4px);
+          right: calc(66.666% - 4px);
+          background: linear-gradient(90deg, #00a884, #a855f7);
+          background-size: 200% 100%;
+          animation: hx-chain-flow 2.2s linear infinite;
+          box-shadow: 0 0 6px rgba(0,168,132,0.5), 0 0 6px rgba(168,85,247,0.5);
+        }
+        .hx-seg-modes-translation {
+          left: calc(66.666% - 4px);
+          right: calc(33.333% - 4px);
+          background: linear-gradient(90deg, #a855f7, #3b82f6);
+          background-size: 200% 100%;
+          animation: hx-chain-flow 2.2s linear infinite;
+          box-shadow: 0 0 6px rgba(168,85,247,0.5), 0 0 6px rgba(59,130,246,0.5);
+        }
+        @keyframes hx-chain-flow {
+          0%   { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
+        }
 
         .hx-pill {
-          position: relative; z-index: 1;
+          position: relative;
+          z-index: 1;
           padding: 4px 8px;
           border-radius: 999px;
           background: #1e2830;
@@ -679,7 +719,7 @@ export default function App() {
         .hx-pill-voice:hover, .hx-pill-modes:hover, .hx-pill-translation:hover { transform: translateY(-1px); }
         .hx-pill-voice:active, .hx-pill-modes:active, .hx-pill-translation:active { transform: translateY(0) scale(0.97); }
 
-        /* ── NAV: auto-fit centered capsule ── */
+        /* ── NAV ── */
         .hx-nav-wrap { display: flex; justify-content: center; margin: 10px 16px 0; }
         .hx-nav {
           display: inline-flex;
@@ -773,27 +813,41 @@ export default function App() {
         </div>
 
         <div className="hx-pills-row">
-          <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" /></svg>
-          <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" /></svg>
-          <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none"><path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" /></svg>
+          {/* segment: voice → modes (always on) */}
+          <div className="hx-seg hx-seg-voice-modes" />
+          {/* segment: modes → translation (only when translateOn) */}
+          {translateOn && <div className="hx-seg hx-seg-modes-translation" />}
 
-          <div className="hx-chain-line" />
-
-          <div className="hx-pill hx-pill-voice" onClick={() => setShowVoiceModal(true)}>
-            {voiceLabel(voices, voice).toUpperCase()}
+          <div className="hx-cell">
+            <svg className="hx-connector hx-conn-voice" viewBox="0 0 60 40" preserveAspectRatio="none">
+              <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
+            </svg>
+            <div className="hx-pill hx-pill-voice" onClick={() => setShowVoiceModal(true)}>
+              {voiceLabel(voices, voice).toUpperCase()}
+            </div>
           </div>
 
-          <div className="hx-pill hx-pill-modes" onClick={() => setShowModeModal(true)}>
-            {prettyMode(selectedMode)}
+          <div className="hx-cell">
+            <svg className="hx-connector hx-conn-modes" viewBox="0 0 60 40" preserveAspectRatio="none">
+              <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
+            </svg>
+            <div className="hx-pill hx-pill-modes" onClick={() => setShowModeModal(true)}>
+              {prettyMode(selectedMode)}
+            </div>
           </div>
 
-          <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => setShowTranslateModal(true)}>
-            {translateOn ? (LANG_META[targetLang]?.label.toUpperCase() || 'OFF') : 'OFF'}
+          <div className="hx-cell">
+            <svg className={`hx-connector hx-conn-translation ${!translateOn ? 'off' : ''}`} viewBox="0 0 60 40" preserveAspectRatio="none">
+              <path d="M 30 0 L 30 10 L 40 10 L 40 40" className="hx-wire" />
+            </svg>
+            <div className={`hx-pill hx-pill-translation ${!translateOn ? 'off' : ''}`} onClick={() => setShowTranslateModal(true)}>
+              {translateOn ? (LANG_META[targetLang]?.label.toUpperCase() || 'OFF') : 'OFF'}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ══ NAV (centered, auto-fit) ══ */}
+      {/* ══ NAV ══ */}
       <div className="hx-nav-wrap">
         <div className={`hx-nav ${!navVisible ? 'hidden' : ''}`}>
           {tabs.map(t => (
