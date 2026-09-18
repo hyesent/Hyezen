@@ -397,6 +397,7 @@ export default function App() {
   const navTimer = useRef(null);
 
   // Lab — visible once user types "open lab"
+  const [labResults, setLabResults] = useState([]);
   const [labVisible, setLabVisible] = useState(() => {
     try { return localStorage.getItem('hx_lab_visible') === '1'; } catch { return false; }
   });
@@ -1301,14 +1302,16 @@ export default function App() {
           prettyMode={prettyMode}
           t={t}
         />
-      ) : isLab ? (
-        <Lab
-          API_URL={API_URL}
-          voices={voices}
-          modes={modes}
-          triggerDownload={triggerDownload}
-        />
-      ) : (
+     ) : isLab ? (
+  <Lab
+    API_URL={API_URL}
+    voices={voices}
+    modes={modes}
+    triggerDownload={triggerDownload}
+    labResults={labResults}
+    setLabResults={setLabResults}
+  />
+) : (
         <>
           <div onScroll={handleChatScroll} style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', background: '#0a0a0f' }}>
             {chat.map((msg, i) => (
