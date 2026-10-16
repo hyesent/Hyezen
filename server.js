@@ -1050,6 +1050,22 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
+// Root status route: opening the Render service URL should return a useful response.
+app.get('/', (req, res) => {
+  res.json({
+    service: 'HYEZEN TTS',
+    status: 'ok',
+    message: 'Hyezen TTS API is running.',
+    health: '/api/health',
+    endpoints: {
+      voices: '/api/voices/:type',
+      modes: '/api/modes',
+      tts: 'POST /api/tts',
+      health: '/api/health',
+    },
+  });
+});
+
 app.get('/api/health', (req, res) => {
   const db = loadCacheDB();
   res.json({
@@ -1065,7 +1081,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-
 app.listen(PORT, () => {
   console.log(`🚀 HYEZEN TTS v12 running on port ${PORT}`);
   console.log(`✅ Realistic: ${REALISTIC_VOICES.length} voices, Fair: ${FAIR_VOICES.length}`);
@@ -1074,3 +1089,4 @@ app.listen(PORT, () => {
   console.log('✅ V2: segment splitter + ffmpeg concat (caps tiers:', Object.keys(CAPS_TIERS).join(', '), ')');
   console.log('✅ Errors: classified + friendly');
 });
+
